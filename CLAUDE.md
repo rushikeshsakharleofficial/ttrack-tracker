@@ -136,7 +136,11 @@ Frames: `PMP_F_HELLO=1`, `PMP_F_OUT=2`, `PMP_F_RESIZE=3`, `PMP_F_CLOSE=4`, `PMP_
 Header: 28 bytes packed, all fields little-endian.
 SID: UUID v4, exactly 36 chars `[0-9a-f-]`, validated in server.c before file path use.
 
-## DO NOT
+## DO NOT — Commits
+
+- Never add `Co-Authored-By:` lines to commits — not Claude, not anyone unless user explicitly asks
+
+## DO NOT — Code
 
 - Do not `isatty(STDOUT_FILENO)` in shim — bash redirects fd1 during profile.d sourcing
 - Do not use nested C functions (GCC extension) — use static file-scope functions
