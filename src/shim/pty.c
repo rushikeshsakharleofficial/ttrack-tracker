@@ -8,9 +8,9 @@
 #include <string.h>
 #include <errno.h>
 #include <fcntl.h>
-#include "pmp_log.h"
+#include "trackterm_log.h"
 
-int pmp_pty_open(int *amaster, int *aslave, char **slave_name,
+int trackterm_pty_open(int *amaster, int *aslave, char **slave_name,
                  const struct winsize *winp)
 {
     int master, slave;
@@ -35,7 +35,7 @@ int pmp_pty_open(int *amaster, int *aslave, char **slave_name,
     return 0;
 }
 
-int pmp_pty_child_setup(int slave_fd)
+int trackterm_pty_child_setup(int slave_fd)
 {
     /* login_tty: setsid, TIOCSCTTY, dup2(slave,0/1/2), close slave */
     if (login_tty(slave_fd) < 0)
@@ -43,7 +43,7 @@ int pmp_pty_child_setup(int slave_fd)
     return 0;
 }
 
-int pmp_pty_set_raw(int fd, struct termios *saved)
+int trackterm_pty_set_raw(int fd, struct termios *saved)
 {
     struct termios raw;
 
@@ -61,21 +61,21 @@ int pmp_pty_set_raw(int fd, struct termios *saved)
     return 0;
 }
 
-int pmp_pty_restore(int fd, const struct termios *saved)
+int trackterm_pty_restore(int fd, const struct termios *saved)
 {
     if (tcsetattr(fd, TCSANOW, saved) < 0)
         return -errno;
     return 0;
 }
 
-int pmp_pty_get_winsize(int fd, struct winsize *ws)
+int trackterm_pty_get_winsize(int fd, struct winsize *ws)
 {
     if (ioctl(fd, TIOCGWINSZ, ws) < 0)
         return -errno;
     return 0;
 }
 
-int pmp_pty_set_winsize(int master_fd, const struct winsize *ws)
+int trackterm_pty_set_winsize(int master_fd, const struct winsize *ws)
 {
     if (ioctl(master_fd, TIOCSWINSZ, ws) < 0)
         return -errno;

@@ -1,3 +1,0 @@
-# Preserve pmp-rec session tracking vars across sudo
-# Install to /etc/sudoers.d/pmp-rec (mode 0440)
-Defaults env_keep += "PMP_REC_SID PMP_REC_PARENT PMP_REC_ACTIVE PMP_REC_LOGINUID PMP_REC_SHIM_CHILD PMP_REC_SERVICE"

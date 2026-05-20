@@ -17,7 +17,7 @@ static void sig_stop(int s) { (void)s; g_stop = 1; }
 int cmd_tail(int argc, char *argv[])
 {
     const char *sid = NULL;
-    const char *storage_dir = "/var/lib/pmp-rec";
+    const char *storage_dir = "/var/lib/trackterm-rec";
 
     for (int i = 0; i < argc; i++) {
         if (strcmp(argv[i], "--dir") == 0 && i+1 < argc)
@@ -27,7 +27,7 @@ int cmd_tail(int argc, char *argv[])
     }
 
     if (!sid) {
-        fprintf(stderr, "Usage: pmp-rec-cli tail [--dir D] <sid>\n");
+        fprintf(stderr, "Usage: trackterm-cli tail [--dir D] <sid>\n");
         return 1;
     }
 

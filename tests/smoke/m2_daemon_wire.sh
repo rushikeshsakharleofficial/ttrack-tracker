@@ -2,9 +2,9 @@
 # M2 smoke test: shim talks to daemon over AF_UNIX
 set -euo pipefail
 
-SHIM="${1:-./build/pmp-rec}"
-DAEMON="${2:-./build/pmp-recd}"
-OUTDIR="$(mktemp -d /tmp/pmp-rec-m2-XXXXXX)"
+SHIM="${1:-./build/trackterm-rec}"
+DAEMON="${2:-./build/trackterm-recd}"
+OUTDIR="$(mktemp -d /tmp/trackterm-rec-m2-XXXXXX)"
 SOCKPATH="$OUTDIR/test.sock"
 STORAGEDIR="$OUTDIR/recordings"
 CONFFILE="$OUTDIR/recd.conf"
@@ -35,8 +35,8 @@ check "daemon running" "$(kill -0 $DAEMON_PID 2>/dev/null && echo 0 || echo 1)"
 check "socket exists"  "$([ -S "$SOCKPATH" ] && echo 0 || echo 1)"
 
 # Run shim against daemon
-export PMP_REC_SOCK="$SOCKPATH"  # custom socket path — daemon should respect this
-unset PMP_REC_NO_DAEMON PMP_REC_ACTIVE PMP_REC_SHIM_CHILD
+export TRACKTERM_REC_SOCK="$SOCKPATH"  # custom socket path — daemon should respect this
+unset TRACKTERM_REC_NO_DAEMON TRACKTERM_REC_ACTIVE TRACKTERM_REC_SHIM_CHILD
 
 "$SHIM" /bin/bash << 'EOF'
 echo daemon_test

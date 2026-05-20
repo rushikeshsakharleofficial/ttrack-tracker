@@ -3,12 +3,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
-#include "pmp_log.h"
-#include "pmp_paths.h"
+#include "trackterm_log.h"
+#include "trackterm_paths.h"
 
 #define MAXLINE 512
 
-typedef struct pmp_daemon_config {
+typedef struct trackterm_daemon_config {
     char    storage_dir[256];
     char    socket_path[256];
     size_t  max_session_bytes;    /* per-session file size before rotation */
@@ -17,11 +17,11 @@ typedef struct pmp_daemon_config {
     int     gzip_on_rotate;
     int     chattr_append_only;
     int     log_level;
-} pmp_daemon_config_t;
+} trackterm_daemon_config_t;
 
-static pmp_daemon_config_t g_cfg = {
-    .storage_dir       = "/var/lib/pmp-rec",
-    .socket_path       = "/run/pmp-recd.sock",
+static trackterm_daemon_config_t g_cfg = {
+    .storage_dir       = "/var/lib/trackterm-rec",
+    .socket_path       = "/run/trackterm-recd.sock",
     .max_session_bytes = 64 * 1024 * 1024,   /* 64 MiB */
     .max_age_days      = 90,
     .fail_closed       = 0,
@@ -30,7 +30,7 @@ static pmp_daemon_config_t g_cfg = {
     .log_level         = 6, /* LOG_INFO */
 };
 
-pmp_daemon_config_t *pmp_config_get(void)
+trackterm_daemon_config_t *trackterm_config_get(void)
 {
     return &g_cfg;
 }
@@ -42,9 +42,9 @@ static void trim(char *s)
     while (*s && isspace((unsigned char)*s)) memmove(s, s+1, strlen(s));
 }
 
-int pmp_config_load(const char *path)
+int trackterm_config_load(const char *path)
 {
-    FILE *f = fopen(path ? path : PMP_CONF_RECD, "r");
+    FILE *f = fopen(path ? path : TRACKTERM_CONF_RECD, "r");
     if (!f) return 0; /* missing config is fine */
 
     char line[MAXLINE];

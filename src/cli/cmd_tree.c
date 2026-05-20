@@ -75,7 +75,7 @@ static void print_tree(const char *sid, int depth)
 int cmd_tree(int argc, char *argv[])
 {
     const char *root_sid = NULL;
-    const char *storage_dir = "/var/lib/pmp-rec";
+    const char *storage_dir = "/var/lib/trackterm-rec";
 
     for (int i = 0; i < argc; i++) {
         if (strcmp(argv[i], "--dir") == 0 && i+1 < argc)
@@ -85,7 +85,7 @@ int cmd_tree(int argc, char *argv[])
     }
 
     if (!root_sid) {
-        fprintf(stderr, "Usage: pmp-rec-cli tree [--dir D] <root-sid>\n");
+        fprintf(stderr, "Usage: trackterm-cli tree [--dir D] <root-sid>\n");
         return 1;
     }
 

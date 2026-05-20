@@ -68,7 +68,7 @@ static void print_meta(const char *path, const char *filename)
 
 int cmd_list(int argc, char *argv[])
 {
-    const char *storage_dir = "/var/lib/pmp-rec";
+    const char *storage_dir = "/var/lib/trackterm-rec";
     const char *filter_user = NULL;
 
     for (int i = 0; i < argc - 1; i++) {

@@ -11,28 +11,28 @@
 #include <fcntl.h>
 #include <time.h>
 
-#include "pmp_proto.h"
-#include "pmp_ttyrec.h"
-#include "pmp_log.h"
-#include "pmp_compat.h"
+#include "trackterm_proto.h"
+#include "trackterm_ttyrec.h"
+#include "trackterm_log.h"
+#include "trackterm_compat.h"
 #include "ringbuf.h"
 
-extern volatile sig_atomic_t pmp_winch_pending;
-extern volatile sig_atomic_t pmp_child_exited;
-extern volatile sig_atomic_t pmp_got_sigterm;
-extern int pmp_child_status;
-int pmp_reap_child(pid_t pid);
+extern volatile sig_atomic_t trackterm_winch_pending;
+extern volatile sig_atomic_t trackterm_child_exited;
+extern volatile sig_atomic_t trackterm_got_sigterm;
+extern int trackterm_child_status;
+int trackterm_reap_child(pid_t pid);
 
 /* Declared in session.c */
-int pmp_session_send_out(int daemon_fd, uint64_t *seq_ptr,
+int trackterm_session_send_out(int daemon_fd, uint64_t *seq_ptr,
                          const uint8_t *data, uint32_t len);
-int pmp_session_send_close(int daemon_fd, uint64_t *seq_ptr, int exit_code);
-int pmp_session_send_resize(int daemon_fd, uint64_t *seq_ptr,
+int trackterm_session_send_close(int daemon_fd, uint64_t *seq_ptr, int exit_code);
+int trackterm_session_send_resize(int daemon_fd, uint64_t *seq_ptr,
                             uint16_t rows, uint16_t cols);
 
 /* Declared in pty.c */
-int pmp_pty_get_winsize(int fd, struct winsize *ws);
-int pmp_pty_set_winsize(int master_fd, const struct winsize *ws);
+int trackterm_pty_get_winsize(int fd, struct winsize *ws);
+int trackterm_pty_set_winsize(int master_fd, const struct winsize *ws);
 
 static ssize_t write_all_fd(int fd, const void *buf, size_t n)
 {
@@ -98,14 +98,14 @@ static void send_output(shim_ctx_t *ctx, const uint8_t *data, size_t len)
     while (len > 0) {
         uint32_t chunk = (uint32_t)(len > 65536 ? 65536 : len);
 
-        /* Local file mode (M1 / PMP_REC_NO_DAEMON) */
+        /* Local file mode (M1 / TRACKTERM_REC_NO_DAEMON) */
         if (ctx->local_fd >= 0) {
             ttyrec_write_frame(ctx->local_fd, data, chunk);
         }
 
         /* Daemon mode */
         if (ctx->daemon_fd >= 0) {
-            pmp_session_send_out(ctx->daemon_fd, &ctx->seq, data, chunk);
+            trackterm_session_send_out(ctx->daemon_fd, &ctx->seq, data, chunk);
         }
 
         data += chunk;
@@ -116,8 +116,8 @@ static void send_output(shim_ctx_t *ctx, const uint8_t *data, size_t len)
 static void handle_winch(shim_ctx_t *ctx)
 {
     struct winsize ws;
-    if (pmp_pty_get_winsize(ctx->stdin_fd, &ws) < 0) return;
-    pmp_pty_set_winsize(ctx->master_fd, &ws);
+    if (trackterm_pty_get_winsize(ctx->stdin_fd, &ws) < 0) return;
+    trackterm_pty_set_winsize(ctx->master_fd, &ws);
 
     double t = elapsed_sec(&ctx->session_start);
     char body[128];
@@ -128,10 +128,10 @@ static void handle_winch(shim_ctx_t *ctx)
         ttyrec_write_event(ctx->local_evt_fd, t, body);
 
     if (ctx->daemon_fd >= 0)
-        pmp_session_send_resize(ctx->daemon_fd, &ctx->seq, ws.ws_row, ws.ws_col);
+        trackterm_session_send_resize(ctx->daemon_fd, &ctx->seq, ws.ws_row, ws.ws_col);
 }
 
-int pmp_shim_loop_run(shim_ctx_t *ctx)
+int trackterm_shim_loop_run(shim_ctx_t *ctx)
 {
     uint8_t buf[IOBUF_SIZE];
     struct pollfd fds[3];
@@ -149,15 +149,15 @@ int pmp_shim_loop_run(shim_ctx_t *ctx)
     }
 
     for (;;) {
-        if (pmp_winch_pending) {
-            pmp_winch_pending = 0;
+        if (trackterm_winch_pending) {
+            trackterm_winch_pending = 0;
             handle_winch(ctx);
         }
 
-        if (pmp_child_exited) {
-            pmp_child_exited = 0;
-            pmp_reap_child(ctx->child_pid);
-            PMP_LOG_INFO("loop: child exited status=%d", pmp_child_status);
+        if (trackterm_child_exited) {
+            trackterm_child_exited = 0;
+            trackterm_reap_child(ctx->child_pid);
+            TRACKTERM_LOG_INFO("loop: child exited status=%d", trackterm_child_status);
             /* Drain remaining master output */
             for (;;) {
                 ssize_t r = read(ctx->master_fd, buf, sizeof(buf));
@@ -168,8 +168,8 @@ int pmp_shim_loop_run(shim_ctx_t *ctx)
             break;
         }
 
-        if (pmp_got_sigterm) {
-            PMP_LOG_INFO("loop: got SIGHUP/SIGTERM");
+        if (trackterm_got_sigterm) {
+            TRACKTERM_LOG_INFO("loop: got SIGHUP/SIGTERM");
             /* Propagate termination to child before exiting loop */
             kill(ctx->child_pid, SIGHUP);
             break;
@@ -198,20 +198,20 @@ int pmp_shim_loop_run(shim_ctx_t *ctx)
                 write_all_fd(ctx->stdout_fd, buf, (size_t)n);
                 send_output(ctx, buf, (size_t)n);
             } else if (n == 0 || (n < 0 && errno == EIO)) {
-                PMP_LOG_INFO("loop: master EIO/EOF (child closed)");
+                TRACKTERM_LOG_INFO("loop: master EIO/EOF (child closed)");
                 /* Child exited, master closed */
                 break;
             }
         }
 
         if (fds[1].revents & (POLLHUP | POLLERR)) {
-            PMP_LOG_INFO("loop: master POLLHUP/POLLERR");
+            TRACKTERM_LOG_INFO("loop: master POLLHUP/POLLERR");
             break;
         }
 
         /* Daemon disconnect */
         if (nfds == 3 && (fds[2].revents & (POLLHUP | POLLERR))) {
-            PMP_LOG_WARN("daemon connection lost — recording paused");
+            TRACKTERM_LOG_WARN("daemon connection lost — recording paused");
             close(ctx->daemon_fd);
             ctx->daemon_fd = -1;
             nfds = 2;
@@ -221,7 +221,7 @@ int pmp_shim_loop_run(shim_ctx_t *ctx)
     /* Final reap: if we broke out before SIGCHLD was processed.
      * If loop exited via SIGHUP/SIGTERM while child is still alive,
      * kill the child first so we don't block forever. */
-    if (pmp_child_status == 0) {
+    if (trackterm_child_status == 0) {
         int wstatus;
         pid_t r = waitpid(ctx->child_pid, &wstatus, WNOHANG);
         if (r <= 0) {
@@ -243,11 +243,11 @@ int pmp_shim_loop_run(shim_ctx_t *ctx)
         }
         if (r > 0) {
             if (WIFEXITED(wstatus))
-                pmp_child_status = WEXITSTATUS(wstatus);
+                trackterm_child_status = WEXITSTATUS(wstatus);
             else if (WIFSIGNALED(wstatus))
-                pmp_child_status = 128 + WTERMSIG(wstatus);
+                trackterm_child_status = 128 + WTERMSIG(wstatus);
         }
     }
 
-    return pmp_child_status;
+    return trackterm_child_status;
 }

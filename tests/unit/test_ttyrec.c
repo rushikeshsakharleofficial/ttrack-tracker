@@ -6,7 +6,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <endian.h>
-#include "pmp_ttyrec.h"
+#include "trackterm_ttyrec.h"
 
 static int tests_run = 0;
 static int tests_ok  = 0;
@@ -36,7 +36,7 @@ static void test_header_layout(void)
 
 static void test_write_read_frame(void)
 {
-    char tmpfile[] = "/tmp/pmp_ttyrec_test_XXXXXX";
+    char tmpfile[] = "/tmp/trackterm_ttyrec_test_XXXXXX";
     int fd = mkstemp(tmpfile);
     if (fd < 0) { CHECK(0, "mkstemp"); return; }
     unlink(tmpfile);

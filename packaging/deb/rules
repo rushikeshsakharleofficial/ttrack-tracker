@@ -11,12 +11,12 @@ override_dh_auto_build:
 	$(MAKE) HAVE_SYSTEMD=1
 
 override_dh_auto_install:
-	$(MAKE) install DESTDIR=$(CURDIR)/debian/pmp-rec PREFIX=/usr
+	$(MAKE) install DESTDIR=$(CURDIR)/debian/trackterm-rec PREFIX=/usr
 	# Debian uses lib/x86_64-linux-gnu/security for PAM modules
-	install -d $(CURDIR)/debian/pmp-rec/usr/lib/x86_64-linux-gnu/security
-	mv $(CURDIR)/debian/pmp-rec/usr/lib64/security/pam_record.so \
-	   $(CURDIR)/debian/pmp-rec/usr/lib/x86_64-linux-gnu/security/pam_record.so
-	rm -rf $(CURDIR)/debian/pmp-rec/usr/lib64 2>/dev/null || true
+	install -d $(CURDIR)/debian/trackterm-rec/usr/lib/x86_64-linux-gnu/security
+	mv $(CURDIR)/debian/trackterm-rec/usr/lib64/security/pam_record.so \
+	   $(CURDIR)/debian/trackterm-rec/usr/lib/x86_64-linux-gnu/security/pam_record.so
+	rm -rf $(CURDIR)/debian/trackterm-rec/usr/lib64 2>/dev/null || true
 
 override_dh_auto_clean:
 	$(MAKE) clean

@@ -1,7 +1,7 @@
 #define _GNU_SOURCE
 #include <stdio.h>
 #include <string.h>
-#include "pmp_uuid.h"
+#include "trackterm_uuid.h"
 
 static int tests_run = 0;
 static int tests_ok  = 0;
@@ -33,8 +33,8 @@ int main(void)
 {
     char uuid1[37], uuid2[37];
 
-    int r1 = pmp_uuid_generate(uuid1);
-    int r2 = pmp_uuid_generate(uuid2);
+    int r1 = trackterm_uuid_generate(uuid1);
+    int r2 = trackterm_uuid_generate(uuid2);
 
     CHECK(r1 == 0, "generate uuid1");
     CHECK(r2 == 0, "generate uuid2");

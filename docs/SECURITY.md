@@ -28,13 +28,13 @@ namespace). The daemon records both `loginuid` (human who logged in) and
 `euid` (current effective user).
 
 ### File security
-- Recordings: `root:pmp-audit`, mode `0640`
+- Recordings: `root:trackterm-audit`, mode `0640`
 - Storage dir: mode `0750`
 - `chattr +a` (append-only) on closed files — adds friction even if root is
   compromised (requires `chattr -a` first, which leaves a trail in audit.log)
 
 ### Socket security
-- Socket: `/run/pmp-recd.sock`, mode `0666`
+- Socket: `/run/trackterm-recd.sock`, mode `0666`
 - All connections authenticated via `SO_PEERCRED` (kernel-attested uid/gid/pid)
 - Daemon cross-references `hello.loginuid` against `/proc/<peer_pid>/loginuid`
 - Mismatch from non-root clients is rejected
@@ -44,9 +44,9 @@ namespace). The daemon records both `loginuid` (human who logged in) and
 | Technique | Result |
 |-----------|--------|
 | `exec /bin/sh` | Still inside PTY → recorded |
-| `unset PMP_REC_ACTIVE` | Shim already running → no effect |
+| `unset TRACKTERM_REC_ACTIVE` | Shim already running → no effect |
 | Kill shim process | PTY closes → child shell dies → session ends |
 | `LD_PRELOAD` on child | Recording is in parent → no effect |
 | Write to raw `/dev/pts/N` | Bypasses shim (accepted: requires CAP_SYS_TTY) |
 | Root: `rm` recording file | `chattr +a` prevents; unlink still possible with `chattr -a` |
-| Root: kill pmp-recd | Session continues unrecorded; PAM close_session logs end marker |
+| Root: kill trackterm-recd | Session continues unrecorded; PAM close_session logs end marker |

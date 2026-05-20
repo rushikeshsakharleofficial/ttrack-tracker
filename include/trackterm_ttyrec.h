@@ -1,5 +1,5 @@
-#ifndef PMP_TTYREC_H
-#define PMP_TTYREC_H
+#ifndef TRACKTERM_TTYREC_H
+#define TRACKTERM_TTYREC_H
 
 #include <stdint.h>
 #include <stddef.h>
@@ -21,4 +21,4 @@ int ttyrec_write_frame(int fd, const void *data, uint32_t len);
 /* Write events.jsonl line to fd. */
 int ttyrec_write_event(int fd, double t_sec, const char *json_body);
 
-#endif /* PMP_TTYREC_H */
+#endif /* TRACKTERM_TTYREC_H */

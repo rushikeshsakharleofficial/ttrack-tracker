@@ -2,25 +2,25 @@
 Description=Percona Terminal Session Recorder Daemon
 Documentation=https://github.com/percona/percona-monitoring-plugins
 After=network.target
-Requires=pmp-recd.socket
+Requires=trackterm-recd.socket
 
 [Service]
 Type=notify
-ExecStart=/usr/libexec/pmp-recd -c /etc/pmp-rec/recd.conf
+ExecStart=/usr/libexec/trackterm-recd -c /etc/trackterm-rec/recd.conf
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=always
 RestartSec=5s
 TimeoutStopSec=30s
 WatchdogSec=60s
 
-# Run as root to write to /var/lib/pmp-rec (owned root:pmp-audit)
+# Run as root to write to /var/lib/trackterm-rec (owned root:trackterm-audit)
 User=root
 Group=root
 
 # Hardening
 ProtectSystem=strict
 ProtectHome=yes
-ReadWritePaths=/var/lib/pmp-rec /run/pmp-rec
+ReadWritePaths=/var/lib/trackterm-rec /run/trackterm-rec
 PrivateTmp=yes
 NoNewPrivileges=yes
 RestrictAddressFamilies=AF_UNIX

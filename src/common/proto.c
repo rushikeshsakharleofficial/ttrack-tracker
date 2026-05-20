@@ -4,9 +4,9 @@
 #include <time.h>
 #include <errno.h>
 #include <endian.h>
-#include "pmp_proto.h"
+#include "trackterm_proto.h"
 
-uint64_t pmp_clock_ns(void)
+uint64_t trackterm_clock_ns(void)
 {
     struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
@@ -35,7 +35,7 @@ void frame_parser_free(struct frame_parser *p)
 
 int frame_parser_feed(struct frame_parser *p,
                       const uint8_t *buf, size_t len,
-                      size_t *consumed, struct pmp_frame *out)
+                      size_t *consumed, struct trackterm_frame *out)
 {
     size_t pos = 0;
 
@@ -43,7 +43,7 @@ int frame_parser_feed(struct frame_parser *p,
 
     while (pos < len) {
         if (!p->have_header) {
-            size_t need = sizeof(struct pmp_frame_hdr) - p->hdr_pos;
+            size_t need = sizeof(struct trackterm_frame_hdr) - p->hdr_pos;
             size_t take = len - pos;
             if (take > need) take = need;
 
@@ -51,10 +51,10 @@ int frame_parser_feed(struct frame_parser *p,
             p->hdr_pos += take;
             pos        += take;
 
-            if (p->hdr_pos < sizeof(struct pmp_frame_hdr))
+            if (p->hdr_pos < sizeof(struct trackterm_frame_hdr))
                 continue;
 
-            memcpy(&p->hdr, p->hdr_buf, sizeof(struct pmp_frame_hdr));
+            memcpy(&p->hdr, p->hdr_buf, sizeof(struct trackterm_frame_hdr));
             p->hdr.magic       = le32toh(p->hdr.magic);
             p->hdr.version     = le16toh(p->hdr.version);
             p->hdr.type        = le16toh(p->hdr.type);
@@ -62,7 +62,7 @@ int frame_parser_feed(struct frame_parser *p,
             p->hdr.seq         = le64toh(p->hdr.seq);
             p->hdr.payload_len = le32toh(p->hdr.payload_len);
 
-            if (p->hdr.payload_len > PMP_MAX_PAYLOAD)
+            if (p->hdr.payload_len > TRACKTERM_MAX_PAYLOAD)
                 return -EMSGSIZE;
 
             if (p->hdr.payload_len > 0) {
@@ -109,14 +109,14 @@ ssize_t frame_encode(uint8_t *buf, size_t bufsz,
                      const void *payload, uint32_t payload_len,
                      int include_magic)
 {
-    struct pmp_frame_hdr h;
+    struct trackterm_frame_hdr h;
     size_t total = sizeof(h) + payload_len;
 
     if (bufsz < total)
         return -ENOBUFS;
 
-    h.magic       = htole32(include_magic ? PMP_PROTO_MAGIC : 0u);
-    h.version     = htole16(PMP_PROTO_VERSION);
+    h.magic       = htole32(include_magic ? TRACKTERM_PROTO_MAGIC : 0u);
+    h.version     = htole16(TRACKTERM_PROTO_VERSION);
     h.type        = htole16(type);
     h.ts_ns       = htole64(ts_ns);
     h.seq         = htole64(seq);

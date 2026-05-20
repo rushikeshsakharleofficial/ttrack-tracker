@@ -10,7 +10,7 @@
 
 int cmd_purge(int argc, char *argv[])
 {
-    const char *storage_dir = "/var/lib/pmp-rec";
+    const char *storage_dir = "/var/lib/trackterm-rec";
     int max_age_days = 90;
     const char *del_sid = NULL;
     int dry_run = 0;

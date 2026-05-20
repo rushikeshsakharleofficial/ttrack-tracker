@@ -8,26 +8,9 @@
 #include <time.h>
 #include <sys/stat.h>
 
-#include "pmp_proto.h"
-#include "pmp_ttyrec.h"
-#include "pmp_log.h"
-
-/* From config.c */
-typedef struct pmp_daemon_config {
-    char   storage_dir[256];
-    char   socket_path[256];
-    size_t max_session_bytes;
-    int    max_age_days;
-    int    fail_closed;
-    int    gzip_on_rotate;
-    int    chattr_append_only;
-    int    log_level;
-} pmp_daemon_config_t;
-pmp_daemon_config_t *pmp_config_get(void);
-
-/* From rotate.c */
-void pmp_rotate_file_async(const char *path);
-void pmp_chattr_append_only(const char *path);
+#include "trackterm_proto.h"
+#include "trackterm_ttyrec.h"
+#include "trackterm_log.h"
 
 static void json_escape(const char *src, char *dst, size_t dstsz)
 {
@@ -50,13 +33,13 @@ static void json_escape(const char *src, char *dst, size_t dstsz)
 }
 
 /* Forward declarations */
-int pmp_paths_build(const char *storage_dir, const char *sid,
+int trackterm_paths_build(const char *storage_dir, const char *sid,
                     const char *ext, char *out, size_t outsz);
-int pmp_meta_write(int fd, const struct pmp_hello *h, time_t start_ts);
-int pmp_meta_finalize(int fd, time_t end_ts, int exit_status,
+int trackterm_meta_write(int fd, const struct trackterm_hello *h, time_t start_ts);
+int trackterm_meta_finalize(int fd, time_t end_ts, int exit_status,
                       uint64_t bytes_recorded);
 
-typedef struct pmp_session_store {
+typedef struct trackterm_session_store {
     char     sid[37];
     int      ttyrec_fd;
     int      meta_fd;
@@ -64,14 +47,12 @@ typedef struct pmp_session_store {
     uint64_t bytes_written;
     time_t   start_ts;
     char     storage_dir[256];
-    char     ttyrec_path[512];   /* current ttyrec path (for gzip/chattr at close) */
-    int      rotation_part;      /* 0=original, 1+=rotated parts */
-} pmp_session_store_t;
+} trackterm_session_store_t;
 
-pmp_session_store_t *pmp_store_open(const char *storage_dir,
-                                    const struct pmp_hello *h)
+trackterm_session_store_t *trackterm_store_open(const char *storage_dir,
+                                    const struct trackterm_hello *h)
 {
-    pmp_session_store_t *s = calloc(1, sizeof(*s));
+    trackterm_session_store_t *s = calloc(1, sizeof(*s));
     if (!s) return NULL;
 
     strncpy(s->sid, h->sid, 36);
@@ -84,24 +65,23 @@ pmp_session_store_t *pmp_store_open(const char *storage_dir,
     char path[512];
 
     /* Open ttyrec file */
-    if (pmp_paths_build(storage_dir, h->sid, "ttyrec", path, sizeof(path)) < 0)
+    if (trackterm_paths_build(storage_dir, h->sid, "ttyrec", path, sizeof(path)) < 0)
         goto err;
-    strncpy(s->ttyrec_path, path, sizeof(s->ttyrec_path) - 1);
     s->ttyrec_fd = open(path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0640);
     if (s->ttyrec_fd < 0) {
-        PMP_LOG_ERR("open %s: %s", path, strerror(errno));
+        TRACKTERM_LOG_ERR("open %s: %s", path, strerror(errno));
         goto err;
     }
 
     /* Open meta file */
-    if (pmp_paths_build(storage_dir, h->sid, "meta.json", path, sizeof(path)) < 0)
+    if (trackterm_paths_build(storage_dir, h->sid, "meta.json", path, sizeof(path)) < 0)
         goto err;
     s->meta_fd = open(path, O_RDWR | O_CREAT | O_TRUNC | O_CLOEXEC, 0640);
     if (s->meta_fd < 0) goto err;
-    pmp_meta_write(s->meta_fd, h, s->start_ts);
+    trackterm_meta_write(s->meta_fd, h, s->start_ts);
 
     /* Open events file */
-    if (pmp_paths_build(storage_dir, h->sid, "events.jsonl", path, sizeof(path)) < 0)
+    if (trackterm_paths_build(storage_dir, h->sid, "events.jsonl", path, sizeof(path)) < 0)
         goto err;
     s->events_fd = open(path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0640);
     if (s->events_fd < 0) goto err;
@@ -132,7 +112,7 @@ pmp_session_store_t *pmp_store_open(const char *storage_dir,
         ttyrec_write_event(s->events_fd, 0.0, body);
     }
 
-    PMP_LOG_INFO("session %s opened (loginuid=%u service=%s rhost=%s)",
+    TRACKTERM_LOG_INFO("session %s opened (loginuid=%u service=%s rhost=%s)",
                  h->sid, h->loginuid, h->service, h->rhost);
     return s;
 
@@ -144,47 +124,16 @@ err:
     return NULL;
 }
 
-int pmp_store_write_output(pmp_session_store_t *s,
+int trackterm_store_write_output(trackterm_session_store_t *s,
                            const uint8_t *data, uint32_t len)
 {
     if (s->ttyrec_fd < 0) return -1;
-
-    /* Size cap: rotate to a new part file when limit reached */
-    pmp_daemon_config_t *cfg = pmp_config_get();
-    if (cfg->max_session_bytes > 0 &&
-        s->bytes_written >= cfg->max_session_bytes) {
-        /* Rename current ttyrec → sid.ttyrec.<part>, open fresh sid.ttyrec */
-        char rotated[540];
-        s->rotation_part++;
-        snprintf(rotated, sizeof(rotated), "%s.%d", s->ttyrec_path, s->rotation_part);
-        rename(s->ttyrec_path, rotated);
-
-        if (cfg->gzip_on_rotate)
-            pmp_rotate_file_async(rotated);
-        if (cfg->chattr_append_only)
-            pmp_chattr_append_only(rotated);
-
-        /* Write rotation event to sidecar */
-        if (s->events_fd >= 0) {
-            char body[64];
-            double t = (double)(time(NULL) - s->start_ts);
-            snprintf(body, sizeof(body), "\"type\":\"rotated\",\"part\":%d", s->rotation_part);
-            ttyrec_write_event(s->events_fd, t, body);
-        }
-
-        fsync(s->ttyrec_fd);
-        close(s->ttyrec_fd);
-        s->ttyrec_fd = open(s->ttyrec_path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0640);
-        s->bytes_written = 0;
-        PMP_LOG_INFO("session %s: rotated to part %d", s->sid, s->rotation_part);
-    }
-
     int r = ttyrec_write_frame(s->ttyrec_fd, data, len);
     if (r == 0) s->bytes_written += len;
     return r;
 }
 
-int pmp_store_write_resize(pmp_session_store_t *s, double t,
+int trackterm_store_write_resize(trackterm_session_store_t *s, double t,
                            uint16_t rows, uint16_t cols)
 {
     if (s->events_fd < 0) return -1;
@@ -194,7 +143,7 @@ int pmp_store_write_resize(pmp_session_store_t *s, double t,
     return ttyrec_write_event(s->events_fd, t, body);
 }
 
-void pmp_store_close(pmp_session_store_t *s, int exit_status)
+void trackterm_store_close(trackterm_session_store_t *s, int exit_status)
 {
     if (!s) return;
 
@@ -213,21 +162,15 @@ void pmp_store_close(pmp_session_store_t *s, int exit_status)
         fsync(s->ttyrec_fd);
         close(s->ttyrec_fd);
         s->ttyrec_fd = -1;
-
-        pmp_daemon_config_t *cfg = pmp_config_get();
-        if (cfg->gzip_on_rotate && s->ttyrec_path[0])
-            pmp_rotate_file_async(s->ttyrec_path);
-        else if (cfg->chattr_append_only && s->ttyrec_path[0])
-            pmp_chattr_append_only(s->ttyrec_path);
     }
 
     if (s->meta_fd >= 0) {
-        pmp_meta_finalize(s->meta_fd, time(NULL), exit_status, s->bytes_written);
+        trackterm_meta_finalize(s->meta_fd, time(NULL), exit_status, s->bytes_written);
         close(s->meta_fd);
         s->meta_fd = -1;
     }
 
-    PMP_LOG_INFO("session %s closed (exit=%d bytes=%llu)",
+    TRACKTERM_LOG_INFO("session %s closed (exit=%d bytes=%llu)",
                  s->sid, exit_status,
                  (unsigned long long)s->bytes_written);
     free(s);

@@ -1,11 +1,11 @@
-# pmp-recd configuration file
-# Installed to /etc/pmp-rec/recd.conf
+# trackterm-recd configuration file
+# Installed to /etc/trackterm-rec/recd.conf
 
 # Directory for session recordings
-storage_dir = /var/lib/pmp-rec
+storage_dir = /var/lib/trackterm-rec
 
 # UNIX socket path
-socket_path = /run/pmp-recd.sock
+socket_path = /run/trackterm-recd.sock
 
 # Rotate session file when it exceeds this size (MiB)
 max_session_mb = 64

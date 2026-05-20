@@ -10,22 +10,21 @@
 #include <sys/stat.h>
 #include <sys/epoll.h>
 
-#include <grp.h>
-#include "pmp_proto.h"
-#include "pmp_log.h"
-#include "pmp_paths.h"
+#include "trackterm_proto.h"
+#include "trackterm_log.h"
+#include "trackterm_paths.h"
 
 /* Forward */
-typedef struct pmp_session_store pmp_session_store_t;
-pmp_session_store_t *pmp_store_open(const char *storage_dir,
-                                    const struct pmp_hello *h);
-int  pmp_store_write_output(pmp_session_store_t *s,
+typedef struct trackterm_session_store trackterm_session_store_t;
+trackterm_session_store_t *trackterm_store_open(const char *storage_dir,
+                                    const struct trackterm_hello *h);
+int  trackterm_store_write_output(trackterm_session_store_t *s,
                             const uint8_t *data, uint32_t len);
-int  pmp_store_write_resize(pmp_session_store_t *s, double t,
+int  trackterm_store_write_resize(trackterm_session_store_t *s, double t,
                             uint16_t rows, uint16_t cols);
-void pmp_store_close(pmp_session_store_t *s, int exit_status);
+void trackterm_store_close(trackterm_session_store_t *s, int exit_status);
 
-typedef struct pmp_client {
+typedef struct trackterm_client {
     int                  fd;
     uid_t                peer_uid;
     gid_t                peer_gid;
@@ -33,18 +32,18 @@ typedef struct pmp_client {
     uint32_t             loginuid;
     char                 sid[37];
     struct frame_parser  parser;
-    pmp_session_store_t *store;
+    trackterm_session_store_t *store;
     uint64_t             session_start_ns;
     int                  got_hello;
-} pmp_client_t;
+} trackterm_client_t;
 
 #define MAX_CLIENTS 256
 
-static pmp_client_t *g_clients[MAX_CLIENTS];
+static trackterm_client_t *g_clients[MAX_CLIENTS];
 static int g_ncli = 0;
 static const char *g_storage_dir = NULL;
 
-int pmp_server_bind(const char *sockpath, mode_t mode)
+int trackterm_server_bind(const char *sockpath, mode_t mode)
 {
     struct sockaddr_un addr;
     int fd;
@@ -64,12 +63,6 @@ int pmp_server_bind(const char *sockpath, mode_t mode)
     }
 
     chmod(sockpath, mode);
-
-    /* Set group ownership to pmp-audit so mode 0660 restricts access correctly.
-     * Only processes running with gid=pmp-audit (via setgid bit on pmp-rec) connect. */
-    struct group *gr = getgrnam("pmp-audit");
-    if (gr)
-        chown(sockpath, (uid_t)-1, gr->gr_gid);
 
     if (listen(fd, 64) < 0) {
         close(fd);
@@ -113,7 +106,7 @@ static uint32_t read_loginuid_for_pid(pid_t pid)
     return (uint32_t)strtoul(buf, NULL, 10);
 }
 
-int pmp_server_accept(int listen_fd, const char *storage_dir, int epoll_fd)
+int trackterm_server_accept(int listen_fd, const char *storage_dir, int epoll_fd)
 {
     struct sockaddr_un addr;
     socklen_t addrlen = sizeof(addr);
@@ -127,7 +120,7 @@ int pmp_server_accept(int listen_fd, const char *storage_dir, int epoll_fd)
     }
 
     if (g_ncli >= MAX_CLIENTS) {
-        PMP_LOG_WARN("client limit reached, dropping");
+        TRACKTERM_LOG_WARN("client limit reached, dropping");
         close(fd);
         return 0;
     }
@@ -136,12 +129,12 @@ int pmp_server_accept(int listen_fd, const char *storage_dir, int epoll_fd)
     struct ucred cred;
     socklen_t credlen = sizeof(cred);
     if (getsockopt(fd, SOL_SOCKET, SO_PEERCRED, &cred, &credlen) < 0) {
-        PMP_LOG_WARN("SO_PEERCRED failed: %s", strerror(errno));
+        TRACKTERM_LOG_WARN("SO_PEERCRED failed: %s", strerror(errno));
         close(fd);
         return 0;
     }
 
-    pmp_client_t *c = calloc(1, sizeof(*c));
+    trackterm_client_t *c = calloc(1, sizeof(*c));
     if (!c) { close(fd); return -1; }
 
     c->fd       = fd;
@@ -161,16 +154,16 @@ int pmp_server_accept(int listen_fd, const char *storage_dir, int epoll_fd)
     ev.data.ptr = c;
     epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &ev);
 
-    PMP_LOG_DBG("client accepted uid=%u pid=%d", cred.uid, cred.pid);
+    TRACKTERM_LOG_DBG("client accepted uid=%u pid=%d", cred.uid, cred.pid);
     return 0;
 }
 
-static void close_client(pmp_client_t *c, int exit_status, int epoll_fd)
+static void close_client(trackterm_client_t *c, int exit_status, int epoll_fd)
 {
     if (!c) return;
 
     if (c->store) {
-        pmp_store_close(c->store, exit_status);
+        trackterm_store_close(c->store, exit_status);
         c->store = NULL;
     }
 
@@ -190,7 +183,7 @@ static void close_client(pmp_client_t *c, int exit_status, int epoll_fd)
     free(c);
 }
 
-static int handle_frame(pmp_client_t *c, const struct pmp_frame *f)
+static int handle_frame(trackterm_client_t *c, const struct trackterm_frame *f)
 {
     double t_sec = 0.0;
 
@@ -198,28 +191,28 @@ static int handle_frame(pmp_client_t *c, const struct pmp_frame *f)
         t_sec = (double)(f->hdr.ts_ns - c->session_start_ns) / 1e9;
 
     switch (f->hdr.type) {
-    case PMP_F_HELLO: {
-        if (f->hdr.payload_len < sizeof(struct pmp_hello)) {
-            PMP_LOG_WARN("short hello from pid=%d", c->peer_pid);
+    case TRACKTERM_F_HELLO: {
+        if (f->hdr.payload_len < sizeof(struct trackterm_hello)) {
+            TRACKTERM_LOG_WARN("short hello from pid=%d", c->peer_pid);
             return -1;
         }
-        const struct pmp_hello *h = (const struct pmp_hello *)f->payload;
+        const struct trackterm_hello *h = (const struct trackterm_hello *)f->payload;
 
         /* Cross-check: hello loginuid must match kernel loginuid */
         if (c->loginuid != 0xFFFFFFFFu && h->loginuid != c->loginuid &&
             c->peer_uid != 0) {
-            PMP_LOG_WARN("loginuid mismatch: claimed=%u kernel=%u",
+            TRACKTERM_LOG_WARN("loginuid mismatch: claimed=%u kernel=%u",
                          h->loginuid, c->loginuid);
             return -1;
         }
 
-        /* Reject non-UUID SIDs — prevents path traversal in pmp_paths_build */
+        /* Reject non-UUID SIDs — prevents path traversal in trackterm_paths_build */
         if (!is_valid_uuid(h->sid)) {
-            PMP_LOG_WARN("invalid SID from pid=%d, rejecting", c->peer_pid);
+            TRACKTERM_LOG_WARN("invalid SID from pid=%d, rejecting", c->peer_pid);
             return -1;
         }
         if (h->parent_sid[0] && !is_valid_uuid(h->parent_sid)) {
-            PMP_LOG_WARN("invalid parent_sid from pid=%d, rejecting", c->peer_pid);
+            TRACKTERM_LOG_WARN("invalid parent_sid from pid=%d, rejecting", c->peer_pid);
             return -1;
         }
 
@@ -227,25 +220,25 @@ static int handle_frame(pmp_client_t *c, const struct pmp_frame *f)
         c->session_start_ns = f->hdr.ts_ns;
         c->got_hello = 1;
 
-        c->store = pmp_store_open(g_storage_dir, h);
-        if (!c->store) PMP_LOG_WARN("store_open failed for %s", h->sid);
+        c->store = trackterm_store_open(g_storage_dir, h);
+        if (!c->store) TRACKTERM_LOG_WARN("store_open failed for %s", h->sid);
         break;
     }
-    case PMP_F_OUT:
+    case TRACKTERM_F_OUT:
         if (!c->got_hello || !c->store) break;
-        pmp_store_write_output(c->store,
+        trackterm_store_write_output(c->store,
                                (const uint8_t *)f->payload,
                                f->hdr.payload_len);
         break;
 
-    case PMP_F_RESIZE: {
+    case TRACKTERM_F_RESIZE: {
         if (!c->got_hello || !c->store) break;
-        if (f->hdr.payload_len < sizeof(struct pmp_resize)) break;
-        const struct pmp_resize *rs = (const struct pmp_resize *)f->payload;
-        pmp_store_write_resize(c->store, t_sec, rs->rows, rs->cols);
+        if (f->hdr.payload_len < sizeof(struct trackterm_resize)) break;
+        const struct trackterm_resize *rs = (const struct trackterm_resize *)f->payload;
+        trackterm_store_write_resize(c->store, t_sec, rs->rows, rs->cols);
         break;
     }
-    case PMP_F_CLOSE: {
+    case TRACKTERM_F_CLOSE: {
         int exit_status = 0;
         if (f->hdr.payload_len >= 4) {
             int32_t s;
@@ -254,17 +247,17 @@ static int handle_frame(pmp_client_t *c, const struct pmp_frame *f)
         }
         return -(exit_status + 1000); /* signal caller to close */
     }
-    case PMP_F_HEARTBEAT:
+    case TRACKTERM_F_HEARTBEAT:
         break;
     default:
-        PMP_LOG_DBG("unknown frame type %u", f->hdr.type);
+        TRACKTERM_LOG_DBG("unknown frame type %u", f->hdr.type);
     }
     return 0;
 }
 
-int pmp_server_handle_client(pmp_client_t *c, int epoll_fd)
+int trackterm_server_handle_client(trackterm_client_t *c, int epoll_fd)
 {
-    uint8_t buf[65536 + sizeof(struct pmp_frame_hdr)];
+    uint8_t buf[65536 + sizeof(struct trackterm_frame_hdr)];
     ssize_t n;
 
     for (;;) {
@@ -281,13 +274,13 @@ int pmp_server_handle_client(pmp_client_t *c, int epoll_fd)
 
         size_t pos = 0;
         while (pos < (size_t)n) {
-            struct pmp_frame f;
+            struct trackterm_frame f;
             size_t consumed;
             int r = frame_parser_feed(&c->parser, buf + pos, (size_t)n - pos,
                                       &consumed, &f);
             pos += consumed;
             if (r < 0) {
-                PMP_LOG_WARN("parse error from pid=%d: %d", c->peer_pid, r);
+                TRACKTERM_LOG_WARN("parse error from pid=%d: %d", c->peer_pid, r);
                 frame_parser_reset(&c->parser);
                 close_client(c, -1, epoll_fd);
                 return -1;
@@ -310,7 +303,7 @@ int pmp_server_handle_client(pmp_client_t *c, int epoll_fd)
 }
 
 /* Called when epoll reports EPOLLHUP/EPOLLERR */
-void pmp_server_drop_client(pmp_client_t *c, int epoll_fd)
+void trackterm_server_drop_client(trackterm_client_t *c, int epoll_fd)
 {
     close_client(c, -1, epoll_fd);
 }

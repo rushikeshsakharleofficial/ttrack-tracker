@@ -5,12 +5,12 @@
 `pam_record.so` is a PAM session module. On `pam_sm_open_session`:
 
 1. Mints a new UUIDv4 session ID via `/proc/sys/kernel/random/uuid`
-2. Reads any existing `PMP_REC_SID` from PAM environment (set by parent session)
-3. Promotes old SID → `PMP_REC_PARENT`, stamps new `PMP_REC_SID`
-4. Writes a marker file to `/run/pmp-rec/sessions/<sid>.json`
+2. Reads any existing `TRACKTERM_REC_SID` from PAM environment (set by parent session)
+3. Promotes old SID → `TRACKTERM_REC_PARENT`, stamps new `TRACKTERM_REC_SID`
+4. Writes a marker file to `/run/trackterm-rec/sessions/<sid>.json`
 5. Returns `PAM_SUCCESS` (fail-open; never blocks login)
 
-The shim (`pmp-rec`) reads `PMP_REC_SID` and `PMP_REC_PARENT` on startup.
+The shim (`trackterm-rec`) reads `TRACKTERM_REC_SID` and `TRACKTERM_REC_PARENT` on startup.
 
 ## Installation by service
 
@@ -45,9 +45,9 @@ session    optional     pam_record.so service=login
 
 ## sudo env_keep
 
-Add `/etc/sudoers.d/pmp-rec` (mode 0440):
+Add `/etc/sudoers.d/trackterm-rec` (mode 0440):
 ```
-Defaults env_keep += "PMP_REC_SID PMP_REC_PARENT PMP_REC_ACTIVE PMP_REC_LOGINUID PMP_REC_SHIM_CHILD"
+Defaults env_keep += "TRACKTERM_REC_SID TRACKTERM_REC_PARENT TRACKTERM_REC_ACTIVE TRACKTERM_REC_LOGINUID TRACKTERM_REC_SHIM_CHILD"
 ```
 
 ## zsh
@@ -55,8 +55,8 @@ Defaults env_keep += "PMP_REC_SID PMP_REC_PARENT PMP_REC_ACTIVE PMP_REC_LOGINUID
 zsh does not source `/etc/profile.d`. Append to `/etc/zshenv`:
 ```zsh
 if [[ -o interactive ]] && [[ -t 0 ]] && [[ -t 1 ]]; then
-  if [[ -z "${PMP_REC_ACTIVE:-}" ]] && [[ "${PMP_REC_SHIM_CHILD:-0}" != "1" ]]; then
-    [[ -x /usr/libexec/pmp-rec ]] && { export PMP_REC_ACTIVE=1; exec /usr/libexec/pmp-rec; }
+  if [[ -z "${TRACKTERM_REC_ACTIVE:-}" ]] && [[ "${TRACKTERM_REC_SHIM_CHILD:-0}" != "1" ]]; then
+    [[ -x /usr/libexec/trackterm-rec ]] && { export TRACKTERM_REC_ACTIVE=1; exec /usr/libexec/trackterm-rec; }
   fi
 fi
 ```

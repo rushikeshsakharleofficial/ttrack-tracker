@@ -6,8 +6,8 @@
 #include <fcntl.h>
 #include <time.h>
 #include <errno.h>
-#include "pmp_proto.h"
-#include "pmp_log.h"
+#include "trackterm_proto.h"
+#include "trackterm_log.h"
 
 /* Escape a string for safe embedding inside a JSON double-quoted value.
  * Handles backslash, double-quote, and ASCII control characters. */
@@ -31,7 +31,7 @@ static void json_escape(const char *src, char *dst, size_t dstsz)
     dst[d] = '\0';
 }
 
-int pmp_meta_write(int fd, const struct pmp_hello *h, time_t start_ts)
+int trackterm_meta_write(int fd, const struct trackterm_hello *h, time_t start_ts)
 {
     char buf[2048];
     char start_iso[32];
@@ -95,7 +95,7 @@ int pmp_meta_write(int fd, const struct pmp_hello *h, time_t start_ts)
     return 0;
 }
 
-int pmp_meta_finalize(int fd, time_t end_ts, int exit_status,
+int trackterm_meta_finalize(int fd, time_t end_ts, int exit_status,
                       uint64_t bytes_recorded)
 {
     /* Seek back to update end_ts, exit_status, bytes_recorded.

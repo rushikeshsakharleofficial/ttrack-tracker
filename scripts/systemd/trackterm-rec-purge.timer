@@ -1,6 +1,6 @@
 [Unit]
 Description=Daily purge of old terminal session recordings
-Requires=pmp-rec-purge.service
+Requires=trackterm-rec-purge.service
 
 [Timer]
 OnCalendar=daily

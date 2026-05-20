@@ -21,35 +21,35 @@ PREFIX   := /usr
 BINDIR   := $(PREFIX)/bin
 LIBEXEC  := $(PREFIX)/libexec
 SECDIR   := /usr/lib64/security
-SYSCONFDIR := /etc/pmp-rec
-STORAGEDIR := /var/lib/pmp-rec
+SYSCONFDIR := /etc/trackterm-rec
+STORAGEDIR := /var/lib/trackterm-rec
 SYSTEMD_UNIT_DIR := /usr/lib/systemd/system
 TMPFILES_DIR := /usr/lib/tmpfiles.d
 
-all: $(BUILDDIR)/pmp-rec $(BUILDDIR)/pmp-recd $(BUILDDIR)/pmp-rec-cli $(BUILDDIR)/pam_record.so
+all: $(BUILDDIR)/trackterm-rec $(BUILDDIR)/trackterm-recd $(BUILDDIR)/trackterm-cli $(BUILDDIR)/pam_record.so
 
 # ─── Common objects ───────────────────────────────────────────────────────────
 COMMON_SRC := src/common/log.c src/common/uuid.c src/common/ttyrec.c \
               src/common/proto.c src/common/ringbuf.c
 COMMON_OBJ := $(patsubst src/%.c,$(BUILDDIR)/%.o,$(COMMON_SRC))
 
-# ─── Shim (pmp-rec) ───────────────────────────────────────────────────────────
+# ─── Shim (trackterm-rec) ───────────────────────────────────────────────────────────
 SHIM_SRC := src/shim/main.c src/shim/pty.c src/shim/loop.c \
             src/shim/session.c src/shim/signals.c \
             src/shim/shell_resolve.c src/shim/env_guard.c
 SHIM_OBJ := $(patsubst src/%.c,$(BUILDDIR)/%.o,$(SHIM_SRC))
 
-$(BUILDDIR)/pmp-rec: $(SHIM_OBJ) $(COMMON_OBJ)
+$(BUILDDIR)/trackterm-rec: $(SHIM_OBJ) $(COMMON_OBJ)
 	@mkdir -p $(@D)
 	$(CC) $(LDFLAGS) -pie -o $@ $^ -lutil
 
-# ─── Daemon (pmp-recd) ────────────────────────────────────────────────────────
+# ─── Daemon (trackterm-recd) ────────────────────────────────────────────────────────
 DAEMON_SRC := src/daemon/main.c src/daemon/server.c src/daemon/session_store.c \
               src/daemon/meta.c src/daemon/paths.c src/daemon/rotate.c \
               src/daemon/config.c
 DAEMON_OBJ := $(patsubst src/%.c,$(BUILDDIR)/%.o,$(DAEMON_SRC))
 
-$(BUILDDIR)/pmp-recd: $(DAEMON_OBJ) $(COMMON_OBJ)
+$(BUILDDIR)/trackterm-recd: $(DAEMON_OBJ) $(COMMON_OBJ)
 	@mkdir -p $(@D)
 	$(CC) $(LDFLAGS) -pie -o $@ $^ $(SYSTEMD_LIBS) -lz -lpthread
 
@@ -61,13 +61,13 @@ $(BUILDDIR)/pam_record.so: $(PAM_OBJ)
 	@mkdir -p $(@D)
 	$(CC) -shared -Wl,-soname,pam_record.so -o $@ $^ -lpam
 
-# ─── CLI (pmp-rec-cli) ────────────────────────────────────────────────────────
+# ─── CLI (trackterm-cli) ────────────────────────────────────────────────────────
 CLI_SRC := src/cli/main.c src/cli/cmd_list.c src/cli/cmd_play.c \
            src/cli/cmd_tail.c src/cli/cmd_purge.c src/cli/cmd_tree.c \
            src/cli/cmd_tui.c
 CLI_OBJ := $(patsubst src/%.c,$(BUILDDIR)/%.o,$(CLI_SRC))
 
-$(BUILDDIR)/pmp-rec-cli: $(CLI_OBJ) $(COMMON_OBJ)
+$(BUILDDIR)/trackterm-cli: $(CLI_OBJ) $(COMMON_OBJ)
 	@mkdir -p $(@D)
 	$(CC) $(LDFLAGS) -pie -o $@ $^ -lncurses
 
@@ -94,25 +94,25 @@ lint:
 
 # ─── Install ──────────────────────────────────────────────────────────────────
 install: all
-	install -Dm755 $(BUILDDIR)/pmp-rec     $(DESTDIR)$(LIBEXEC)/pmp-rec
-	install -Dm755 $(BUILDDIR)/pmp-recd    $(DESTDIR)$(LIBEXEC)/pmp-recd
-	install -Dm755 $(BUILDDIR)/pmp-rec-cli $(DESTDIR)$(BINDIR)/pmp-rec-cli
+	install -Dm755 $(BUILDDIR)/trackterm-rec     $(DESTDIR)$(LIBEXEC)/trackterm-rec
+	install -Dm755 $(BUILDDIR)/trackterm-recd    $(DESTDIR)$(LIBEXEC)/trackterm-recd
+	install -Dm755 $(BUILDDIR)/trackterm-cli $(DESTDIR)$(BINDIR)/trackterm-cli
 	install -Dm755 $(BUILDDIR)/pam_record.so $(DESTDIR)$(SECDIR)/pam_record.so
-	install -Dm644 scripts/systemd/pmp-recd.service \
-	               $(DESTDIR)$(SYSTEMD_UNIT_DIR)/pmp-recd.service
-	install -Dm644 scripts/systemd/pmp-recd.socket \
-	               $(DESTDIR)$(SYSTEMD_UNIT_DIR)/pmp-recd.socket
-	install -Dm644 scripts/systemd/pmp-rec-purge.service \
-	               $(DESTDIR)$(SYSTEMD_UNIT_DIR)/pmp-rec-purge.service
-	install -Dm644 scripts/systemd/pmp-rec-purge.timer \
-	               $(DESTDIR)$(SYSTEMD_UNIT_DIR)/pmp-rec-purge.timer
-	install -Dm644 scripts/tmpfiles.d/pmp-rec.conf \
-	               $(DESTDIR)$(TMPFILES_DIR)/pmp-rec.conf
-	install -Dm644 scripts/profile.d/pmp-rec.sh \
-	               $(DESTDIR)/etc/profile.d/pmp-rec.sh
-	install -Dm644 scripts/sudoers.d/pmp-rec \
-	               $(DESTDIR)/etc/sudoers.d/pmp-rec
-	install -Dm755 scripts/install.sh $(DESTDIR)/usr/share/pmp-rec/install.sh
+	install -Dm644 scripts/systemd/trackterm-recd.service \
+	               $(DESTDIR)$(SYSTEMD_UNIT_DIR)/trackterm-recd.service
+	install -Dm644 scripts/systemd/trackterm-recd.socket \
+	               $(DESTDIR)$(SYSTEMD_UNIT_DIR)/trackterm-recd.socket
+	install -Dm644 scripts/systemd/trackterm-rec-purge.service \
+	               $(DESTDIR)$(SYSTEMD_UNIT_DIR)/trackterm-rec-purge.service
+	install -Dm644 scripts/systemd/trackterm-rec-purge.timer \
+	               $(DESTDIR)$(SYSTEMD_UNIT_DIR)/trackterm-rec-purge.timer
+	install -Dm644 scripts/tmpfiles.d/trackterm-rec.conf \
+	               $(DESTDIR)$(TMPFILES_DIR)/trackterm-rec.conf
+	install -Dm644 scripts/profile.d/trackterm-rec.sh \
+	               $(DESTDIR)/etc/profile.d/trackterm-rec.sh
+	install -Dm644 scripts/sudoers.d/trackterm-rec \
+	               $(DESTDIR)/etc/sudoers.d/trackterm-rec
+	install -Dm755 scripts/install.sh $(DESTDIR)/usr/share/trackterm-rec/install.sh
 	install -d $(DESTDIR)$(SYSCONFDIR)
 	if [ ! -f $(DESTDIR)$(SYSCONFDIR)/recd.conf ]; then \
 	  install -Dm644 config/recd.conf.sample $(DESTDIR)$(SYSCONFDIR)/recd.conf; fi
@@ -124,41 +124,41 @@ install: all
 
 # ─── Uninstall ────────────────────────────────────────────────────────────────
 uninstall:
-	rm -f $(DESTDIR)$(LIBEXEC)/pmp-rec
-	rm -f $(DESTDIR)$(LIBEXEC)/pmp-recd
-	rm -f $(DESTDIR)$(BINDIR)/pmp-rec-cli
+	rm -f $(DESTDIR)$(LIBEXEC)/trackterm-rec
+	rm -f $(DESTDIR)$(LIBEXEC)/trackterm-recd
+	rm -f $(DESTDIR)$(BINDIR)/trackterm-cli
 	rm -f $(DESTDIR)$(SECDIR)/pam_record.so
-	rm -f $(DESTDIR)$(SYSTEMD_UNIT_DIR)/pmp-recd.{service,socket}
-	rm -f $(DESTDIR)$(SYSTEMD_UNIT_DIR)/pmp-rec-purge.{service,timer}
-	rm -f $(DESTDIR)$(TMPFILES_DIR)/pmp-rec.conf
-	rm -f $(DESTDIR)/etc/profile.d/pmp-rec.sh
-	rm -f $(DESTDIR)/etc/sudoers.d/pmp-rec
+	rm -f $(DESTDIR)$(SYSTEMD_UNIT_DIR)/trackterm-recd.{service,socket}
+	rm -f $(DESTDIR)$(SYSTEMD_UNIT_DIR)/trackterm-rec-purge.{service,timer}
+	rm -f $(DESTDIR)$(TMPFILES_DIR)/trackterm-rec.conf
+	rm -f $(DESTDIR)/etc/profile.d/trackterm-rec.sh
+	rm -f $(DESTDIR)/etc/sudoers.d/trackterm-rec
 
 # ─── RPM package ──────────────────────────────────────────────────────────────
 VERSION_STR := $(shell cat VERSION | tr -d '[:space:]')
-TARBALL     := $(HOME)/rpmbuild/SOURCES/pmp-rec-$(VERSION_STR).tar.gz
+TARBALL     := $(HOME)/rpmbuild/SOURCES/trackterm-rec-$(VERSION_STR).tar.gz
 
 rpm: all
 	@command -v rpmbuild >/dev/null || { echo "rpmbuild not found — install rpm-build"; exit 1; }
 	rpmdev-setuptree 2>/dev/null || mkdir -p $(HOME)/rpmbuild/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
-	cp packaging/rpm/pmp-rec.spec $(HOME)/rpmbuild/SPECS/pmp-rec.spec
+	cp packaging/rpm/trackterm-rec.spec $(HOME)/rpmbuild/SPECS/trackterm-rec.spec
 	cd .. && tar czf $(TARBALL) \
-	    --transform 's,^terminal-recorder,pmp-rec-$(VERSION_STR),' \
+	    --transform 's,^terminal-recorder,trackterm-rec-$(VERSION_STR),' \
 	    --exclude 'terminal-recorder/build' \
 	    --exclude 'terminal-recorder/.claude' \
 	    --exclude 'terminal-recorder/release' \
 	    terminal-recorder/
-	rpmbuild -ba $(HOME)/rpmbuild/SPECS/pmp-rec.spec
+	rpmbuild -ba $(HOME)/rpmbuild/SPECS/trackterm-rec.spec
 	mkdir -p release
-	cp $(HOME)/rpmbuild/RPMS/x86_64/pmp-rec-$(VERSION_STR)-*.rpm release/ 2>/dev/null || true
-	cp $(HOME)/rpmbuild/RPMS/noarch/pmp-rec-$(VERSION_STR)-*.rpm  release/ 2>/dev/null || true
-	cp $(HOME)/rpmbuild/SRPMS/pmp-rec-$(VERSION_STR)-*.src.rpm    release/
+	cp $(HOME)/rpmbuild/RPMS/x86_64/trackterm-rec-$(VERSION_STR)-*.rpm release/ 2>/dev/null || true
+	cp $(HOME)/rpmbuild/RPMS/noarch/trackterm-rec-$(VERSION_STR)-*.rpm  release/ 2>/dev/null || true
+	cp $(HOME)/rpmbuild/SRPMS/trackterm-rec-$(VERSION_STR)-*.src.rpm    release/
 	@echo "RPM built: $$(ls release/*.rpm | grep -v debuginfo | grep -v debugsource | grep -v src)"
 
 # ─── DEB package ──────────────────────────────────────────────────────────────
 deb: all
 	bash packaging/deb/build-deb.sh release
-	@echo "DEB built: release/pmp-rec_$(VERSION_STR)-1_amd64.deb"
+	@echo "DEB built: release/trackterm-rec_$(VERSION_STR)-1_amd64.deb"
 
 # ─── Both packages ────────────────────────────────────────────────────────────
 packages: rpm deb

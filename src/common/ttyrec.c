@@ -5,7 +5,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <stdio.h>
-#include "pmp_ttyrec.h"
+#include "trackterm_ttyrec.h"
 
 static int write_all(int fd, const void *buf, size_t n)
 {

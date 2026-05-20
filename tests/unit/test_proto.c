@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
-#include "pmp_proto.h"
+#include "trackterm_proto.h"
 
 static int tests_run = 0;
 static int tests_ok  = 0;
@@ -21,21 +21,21 @@ static void test_encode_decode(void)
     uint32_t plen = (uint32_t)strlen(payload);
 
     ssize_t n = frame_encode(buf, sizeof(buf),
-                             PMP_F_OUT, 123456789ULL, 42,
+                             TRACKTERM_F_OUT, 123456789ULL, 42,
                              payload, plen, 1);
-    CHECK(n == (ssize_t)(sizeof(struct pmp_frame_hdr) + plen),
+    CHECK(n == (ssize_t)(sizeof(struct trackterm_frame_hdr) + plen),
           "encode returns correct length");
 
     struct frame_parser p;
     frame_parser_init(&p);
 
-    struct pmp_frame f;
+    struct trackterm_frame f;
     size_t consumed;
     int r = frame_parser_feed(&p, buf, (size_t)n, &consumed, &f);
 
     CHECK(r == 1, "frame_parser_feed: complete frame");
     CHECK(consumed == (size_t)n, "consumed == n");
-    CHECK(f.hdr.type == PMP_F_OUT, "type == PMP_F_OUT");
+    CHECK(f.hdr.type == TRACKTERM_F_OUT, "type == TRACKTERM_F_OUT");
     CHECK(f.hdr.seq == 42, "seq == 42");
     CHECK(f.hdr.payload_len == plen, "payload_len correct");
     CHECK(memcmp(f.payload, payload, plen) == 0, "payload matches");
@@ -51,12 +51,12 @@ static void test_partial_feed(void)
     uint32_t plen = (uint32_t)strlen(payload);
 
     ssize_t total = frame_encode(buf, sizeof(buf),
-                                 PMP_F_HEARTBEAT, 0, 1,
+                                 TRACKTERM_F_HEARTBEAT, 0, 1,
                                  payload, plen, 0);
 
     struct frame_parser p;
     frame_parser_init(&p);
-    struct pmp_frame f;
+    struct trackterm_frame f;
     size_t consumed;
 
     /* Feed byte-by-byte */
@@ -71,8 +71,8 @@ static void test_partial_feed(void)
 
 static void test_clock_ns(void)
 {
-    uint64_t a = pmp_clock_ns();
-    uint64_t b = pmp_clock_ns();
+    uint64_t a = trackterm_clock_ns();
+    uint64_t b = trackterm_clock_ns();
     CHECK(b >= a, "clock_ns monotone");
     CHECK(a > 0, "clock_ns > 0");
 }

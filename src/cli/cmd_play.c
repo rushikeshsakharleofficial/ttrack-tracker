@@ -10,7 +10,7 @@
 #include <endian.h>
 #include <dirent.h>
 #include <sys/stat.h>
-#include "pmp_ttyrec.h"
+#include "trackterm_ttyrec.h"
 
 /* If arg looks like a SID (not a path), search storage_dir for matching .ttyrec.
  * Returns malloc'd path or NULL. */
@@ -66,7 +66,7 @@ static void nano_sleep_us(long us)
 int cmd_play(int argc, char *argv[])
 {
     const char *ttyrec_path = NULL;
-    const char *storage_dir = "/var/lib/pmp-rec";
+    const char *storage_dir = "/var/lib/trackterm-rec";
     double speed = 1.0;
     int noplay = 0;
     int force = 0;
@@ -86,7 +86,7 @@ int cmd_play(int argc, char *argv[])
     }
 
     if (!ttyrec_path) {
-        fprintf(stderr, "Usage: pmp-rec-cli play [--speed N] [--dump] [--force] [--dir D] <sid|file.ttyrec>\n");
+        fprintf(stderr, "Usage: trackterm-cli play [--speed N] [--dump] [--force] [--dir D] <sid|file.ttyrec>\n");
         return 1;
     }
 
@@ -94,7 +94,7 @@ int cmd_play(int argc, char *argv[])
      * Replaying into the same recording causes the playback output to be
      * captured, growing the ttyrec file, which play then reads again — loop. */
     if (!force && ttyrec_path[0] != '/') {
-        const char *cur_sid = getenv("PMP_REC_SID");
+        const char *cur_sid = getenv("TRACKTERM_REC_SID");
         if (cur_sid && strncmp(cur_sid, ttyrec_path, 36) == 0) {
             char cur_tty[64] = "?";
             char *t = ttyname(STDOUT_FILENO);
@@ -159,7 +159,7 @@ int cmd_play(int argc, char *argv[])
     }
 
     /* Snapshot file size at open — prevents infinite loop when playing an
-     * active session (pmp-rec would record replay output, growing the file). */
+     * active session (trackterm-rec would record replay output, growing the file). */
     struct stat st;
     off_t play_limit = -1;
     if (fstat(fd, &st) == 0)

@@ -5,14 +5,14 @@
 #include <unistd.h>
 #include <pwd.h>
 #include <errno.h>
-#include "pmp_paths.h"
-#include "pmp_log.h"
+#include "trackterm_paths.h"
+#include "trackterm_log.h"
 
 /* Returns malloc'd path to user's real shell, validated against shells.allow.
  * Falls back to /bin/sh if validation fails.
  * Caller must free().
  */
-char *pmp_resolve_shell(void)
+char *trackterm_resolve_shell(void)
 {
     struct passwd *pw;
     FILE *f;
@@ -28,10 +28,10 @@ char *pmp_resolve_shell(void)
         shell = "/bin/sh";
 
     /* If it points back to the shim, force fallback */
-    if (strstr(shell, "pmp-rec"))
+    if (strstr(shell, "trackterm-rec"))
         shell = "/bin/sh";
 
-    f = fopen(PMP_CONF_SHELLS, "r");
+    f = fopen(TRACKTERM_CONF_SHELLS, "r");
     if (f) {
         while (fgets(line, sizeof(line), f)) {
             size_t n = strlen(line);
@@ -46,8 +46,8 @@ char *pmp_resolve_shell(void)
         fclose(f);
 
         if (!found) {
-            PMP_LOG_WARN("shell %s not in %s, falling back to /bin/sh",
-                         shell, PMP_CONF_SHELLS);
+            TRACKTERM_LOG_WARN("shell %s not in %s, falling back to /bin/sh",
+                         shell, TRACKTERM_CONF_SHELLS);
             shell = "/bin/sh";
         }
     }
@@ -62,7 +62,7 @@ char *pmp_resolve_shell(void)
  * If explicit_argv is non-NULL, use it directly.
  * Otherwise build [shell, "-l"] for login or [shell] for plain.
  */
-char **pmp_build_shell_argv(const char *shell, char *const *explicit_argv, int login)
+char **trackterm_build_shell_argv(const char *shell, char *const *explicit_argv, int login)
 {
     char **argv;
 

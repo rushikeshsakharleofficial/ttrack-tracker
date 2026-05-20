@@ -1,5 +1,5 @@
-# Allowed real shells for pmp-rec shim.
-# Installed to /etc/pmp-rec/shells.allow
+# Allowed real shells for trackterm-rec shim.
+# Installed to /etc/trackterm-rec/shells.allow
 # One shell path per line. Lines starting with # are comments.
 # The shim validates pw_shell against this list before exec.
 # If the file is absent, pw_shell is trusted as-is.

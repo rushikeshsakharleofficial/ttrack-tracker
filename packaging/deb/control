@@ -1,4 +1,4 @@
-Source: pmp-rec
+Source: trackterm-rec
 Section: admin
 Priority: optional
 Maintainer: Rushikesh Sakharle <ramsharath@instantly.ai>
@@ -6,7 +6,7 @@ Build-Depends: debhelper-compat (= 13), libpam0g-dev, libsystemd-dev, zlib1g-dev
 Standards-Version: 4.6.0
 Homepage: https://github.com/percona/percona-monitoring-plugins
 
-Package: pmp-rec
+Package: trackterm-rec
 Architecture: amd64
 Depends: ${shlibs:Depends}, ${misc:Depends}, libpam-runtime, systemd
 Description: Percona terminal session recorder daemon

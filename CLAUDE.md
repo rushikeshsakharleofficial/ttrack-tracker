@@ -2,7 +2,7 @@
 
 ## Project
 
-Audit-grade C terminal session recorder. Four binaries: `pmp-rec` (PTY shim), `pmp-recd` (root daemon), `pam_record.so` (PAM module), `pmp-rec-cli` (audit CLI).
+Audit-grade C terminal session recorder. Four binaries: `trackterm-rec` (PTY shim), `trackterm-recd` (root daemon), `pam_record.so` (PAM module), `trackterm-cli` (audit CLI).
 
 Live deployment: Ubuntu 24.04, `89.167.44.42`, user `rushikesh.sakharle`, sudo available.
 
@@ -116,14 +116,14 @@ SSH key: `~/.ssh/id_rsa`, user: `rushikesh.sakharle`, host: `89.167.44.42`
 
 | Binary | Path |
 |--------|------|
-| `pmp-rec` | `/usr/libexec/pmp-rec` |
-| `pmp-recd` | `/usr/libexec/pmp-recd` |
-| `pmp-rec-cli` | `/usr/bin/pmp-rec-cli` |
+| `trackterm-rec` | `/usr/libexec/trackterm-rec` |
+| `trackterm-recd` | `/usr/libexec/trackterm-recd` |
+| `trackterm-cli` | `/usr/bin/trackterm-cli` |
 | `pam_record.so` | `/usr/lib/x86_64-linux-gnu/security/pam_record.so` |
-| config | `/etc/pmp-rec/recd.conf` |
-| profile.d | `/etc/profile.d/pmp-rec.sh` |
-| storage | `/var/lib/pmp-rec/` |
-| socket | `/run/pmp-recd.sock` |
+| config | `/etc/trackterm-rec/recd.conf` |
+| profile.d | `/etc/profile.d/trackterm-rec.sh` |
+| storage | `/var/lib/trackterm-rec/` |
+| socket | `/run/trackterm-recd.sock` |
 
 ## Build Targets
 
@@ -143,7 +143,7 @@ src/shim/main.c          — PTY setup, /dev/tty fix, SID from env, fork
 src/shim/loop.c          — poll loop: slave1↔master2↔daemon
 src/shim/session.c       — daemon connect, HELLO frame, loginuid
 src/shim/shell_resolve.c — shells.allow validation
-src/shim/env_guard.c     — PMP_REC_ACTIVE / PMP_REC_SHIM_CHILD guards
+src/shim/env_guard.c     — TRACKTERM_REC_ACTIVE / TRACKTERM_REC_SHIM_CHILD guards
 src/daemon/server.c      — SO_PEERCRED auth, UUID SID validation, frame dispatch
 src/daemon/session_store.c — per-session file open/write/close
 src/daemon/meta.c        — meta.json write + finalize (json_escape applied)
@@ -151,7 +151,7 @@ src/daemon/rotate.c      — rotation stub (not yet implemented)
 src/daemon/config.c      — recd.conf parser
 src/pam/pam_record.c     — open_session / close_session
 src/pam/pam_env_propagate.c — SID chain: old→parent, mint new
-src/pam/pam_marker.c     — /run/pmp-rec/sessions/<sid>.json
+src/pam/pam_marker.c     — /run/trackterm-rec/sessions/<sid>.json
 src/cli/cmd_list.c       — list with STATUS/ACTIVE/EXITED columns
 src/cli/cmd_play.c       — ttyrec playback, same-session loop guard
 src/cli/cmd_tui.c        — ncurses interactive browser
@@ -161,12 +161,12 @@ src/cli/cmd_tui.c        — ncurses interactive browser
 
 - Security fixes applied: JSON injection (json_escape in meta.c/session_store.c/pam_marker.c), path traversal (UUID validation in server.c)
 - Play loop fixed: same-session and active-session guards in cmd_play.c
-- NVM startup delay fixed: `~/.bashrc` on 89.167.44.42 skips NVM when `PMP_REC_SHIM_CHILD=1`
+- NVM startup delay fixed: `~/.bashrc` on 89.167.44.42 skips NVM when `TRACKTERM_REC_SHIM_CHILD=1`
 - `/dev/tty` fix in shim/main.c: bypasses bash fd1 redirect during profile.d sourcing
-- Socket mode: 0660, group pmp-audit, shim has setgid pmp-audit ✓ (Day 1 done)
-- `service=unknown`: fixed — PMP_REC_SERVICE via pam_putenv; needs live SSH verify ✓
+- Socket mode: 0660, group trackterm-audit, shim has setgid trackterm-audit ✓ (Day 1 done)
+- `service=unknown`: fixed — TRACKTERM_REC_SERVICE via pam_putenv; needs live SSH verify ✓
 - PAM `should_skip()` bug: fixed — returns 1 for matching user ✓ (Day 1 done)
-- Rotation: not implemented (Day 2 of PLAN.md)
+- Rotation: ✓ implemented — size cap splits + renames, gzip async on close, chattr+a, hourly purge (Day 2 done)
 
 ## Commit Pattern
 
@@ -188,24 +188,24 @@ cd ~/terminal-session-recorder && git add <files> && git commit -m "..." && git 
 
 **Check daemon logs:**
 ```bash
-sudo journalctl -t pmp-recd --since='5 min ago' --no-pager
-sudo journalctl -t pmp-rec --since='5 min ago' --no-pager
+sudo journalctl -t trackterm-recd --since='5 min ago' --no-pager
+sudo journalctl -t trackterm-rec --since='5 min ago' --no-pager
 ```
 
 **Check running sessions:**
 ```bash
-sudo pmp-rec-cli list
-sudo ps aux | grep pmp-rec | grep -v grep
+sudo trackterm-cli list
+sudo ps aux | grep trackterm-rec | grep -v grep
 ```
 
 **Force a test session (no daemon, no profile.d):**
 ```bash
-PMP_REC_NO_DAEMON=1 PMP_REC_FORCE_PTY=1 ./build/pmp-rec /bin/bash -c 'echo test; exit'
+TRACKTERM_REC_NO_DAEMON=1 TRACKTERM_REC_FORCE_PTY=1 ./build/trackterm-rec /bin/bash -c 'echo test; exit'
 ```
 
 ## Wire Protocol Quick Ref
 
-Frames: `PMP_F_HELLO=1`, `PMP_F_OUT=2`, `PMP_F_RESIZE=3`, `PMP_F_CLOSE=4`, `PMP_F_HEARTBEAT=5`
+Frames: `TRACKTERM_F_HELLO=1`, `TRACKTERM_F_OUT=2`, `TRACKTERM_F_RESIZE=3`, `TRACKTERM_F_CLOSE=4`, `TRACKTERM_F_HEARTBEAT=5`
 Header: 28 bytes packed, all fields little-endian.
 SID: UUID v4, exactly 36 chars `[0-9a-f-]`, validated in server.c before file path use.
 
@@ -219,5 +219,5 @@ SID: UUID v4, exactly 36 chars `[0-9a-f-]`, validated in server.c before file pa
 - Do not use nested C functions (GCC extension) — use static file-scope functions
 - Do not hardcode `/usr/lib/security/` — path differs by distro (`x86_64-linux-gnu` on Ubuntu)
 - Do not skip json_escape on any string field going into meta.json or events.jsonl
-- Do not allow SID containing `/` or `..` to reach pmp_paths_build
+- Do not allow SID containing `/` or `..` to reach trackterm_paths_build
 - Do not `git add -A` — build artifacts go in `build/`, never tracked

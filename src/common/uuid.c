@@ -4,9 +4,9 @@
 #include <unistd.h>
 #include <string.h>
 #include <errno.h>
-#include "pmp_uuid.h"
+#include "trackterm_uuid.h"
 
-int pmp_uuid_generate(char buf[37])
+int trackterm_uuid_generate(char buf[37])
 {
     static const char kernel_uuid[] = "/proc/sys/kernel/random/uuid";
     int fd;

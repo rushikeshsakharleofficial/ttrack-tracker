@@ -1,16 +1,16 @@
 #!/bin/bash
 # M1 smoke test: PTY shim in local-file mode (no daemon, no PAM)
-# PMP_REC_FORCE_PTY=1 bypasses the isatty gate for automated testing.
+# TRACKTERM_REC_FORCE_PTY=1 bypasses the isatty gate for automated testing.
 set -uo pipefail
 
-SHIM="${1:-./build/pmp-rec}"
-OUTDIR="$(mktemp -d /tmp/pmp-rec-smoke-XXXXXX)"
+SHIM="${1:-./build/trackterm-rec}"
+OUTDIR="$(mktemp -d /tmp/trackterm-rec-smoke-XXXXXX)"
 trap 'rm -rf "$OUTDIR"' EXIT
 
-export PMP_REC_OUTDIR="$OUTDIR"
-export PMP_REC_NO_DAEMON=1
-export PMP_REC_FORCE_PTY=1
-unset PMP_REC_ACTIVE PMP_REC_SHIM_CHILD PMP_REC_SID PMP_REC_PARENT 2>/dev/null || true
+export TRACKTERM_REC_OUTDIR="$OUTDIR"
+export TRACKTERM_REC_NO_DAEMON=1
+export TRACKTERM_REC_FORCE_PTY=1
+unset TRACKTERM_REC_ACTIVE TRACKTERM_REC_SHIM_CHILD TRACKTERM_REC_SID TRACKTERM_REC_PARENT 2>/dev/null || true
 
 PASS=0; FAIL=0
 
@@ -60,16 +60,16 @@ fi
 
 # ── Test 2: Non-tty stdin (no FORCE_PTY) → no ttyrec ─────────────────────────
 rm -f "$OUTDIR"/*.ttyrec 2>/dev/null || true
-unset PMP_REC_FORCE_PTY
+unset TRACKTERM_REC_FORCE_PTY
 echo "exit 0" | "$SHIM" /bin/bash 2>/dev/null || true
-export PMP_REC_FORCE_PTY=1
+export TRACKTERM_REC_FORCE_PTY=1
 TTYREC_COUNT2=$(ls "$OUTDIR"/*.ttyrec 2>/dev/null | wc -l)
 [ "$TTYREC_COUNT2" -eq 0 ] && check "t2: non-tty stdin → no ttyrec" pass || \
     check "t2: non-tty stdin → no ttyrec" fail
 
 # ── Test 3: Re-entrancy guard ──────────────────────────────────────────────────
 rm -f "$OUTDIR"/*.ttyrec 2>/dev/null || true
-PMP_REC_ACTIVE=1 "$SHIM" /bin/bash -c 'echo guard_test; exit 0' </dev/null >/dev/null 2>/dev/null || true
+TRACKTERM_REC_ACTIVE=1 "$SHIM" /bin/bash -c 'echo guard_test; exit 0' </dev/null >/dev/null 2>/dev/null || true
 TTYREC_COUNT3=$(ls "$OUTDIR"/*.ttyrec 2>/dev/null | wc -l)
 [ "$TTYREC_COUNT3" -eq 0 ] && check "t3: re-entrancy guard → no ttyrec" pass || \
     check "t3: re-entrancy guard → no ttyrec" fail

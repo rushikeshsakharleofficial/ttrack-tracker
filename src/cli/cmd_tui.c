@@ -199,7 +199,7 @@ static void draw_screen(session_t *sessions, int count,
     attron(A_BOLD | A_REVERSE);
     char title[256];
     snprintf(title, sizeof(title),
-             " pmp-rec session browser  %d session%s  [q]uit [?]help ",
+             " trackterm-rec session browser  %d session%s  [q]uit [?]help ",
              count, count == 1 ? "" : "s");
     mvprintw(0, 0, "%-*s", cols, title);
     attroff(A_BOLD | A_REVERSE);
@@ -341,7 +341,7 @@ static void show_help(void)
     attroff(A_REVERSE);
 
     const char *lines[] = {
-        " pmp-rec TUI — key bindings",
+        " trackterm-rec TUI — key bindings",
         " ──────────────────────────────────────────────── ",
         " ↑ / k          move up",
         " ↓ / j          move down",
@@ -372,7 +372,7 @@ static void show_help(void)
 
 int cmd_tui(int argc, char *argv[])
 {
-    const char *storage_dir = "/var/lib/pmp-rec";
+    const char *storage_dir = "/var/lib/trackterm-rec";
 
     for (int i = 0; i < argc - 1; i++) {
         if (strcmp(argv[i], "--dir") == 0)
@@ -480,12 +480,12 @@ int cmd_tui(int argc, char *argv[])
         case KEY_ENTER:
             if (count > 0 && selected < count) {
                 char *cmd_argv[] = {
-                    "pmp-rec-cli", "play",
+                    "trackterm-cli", "play",
                     "--dir", (char *)storage_dir,
                     sessions[selected].sid,
                     NULL
                 };
-                run_child("pmp-rec-cli", cmd_argv);
+                run_child("trackterm-cli", cmd_argv);
             }
             break;
 
@@ -493,12 +493,12 @@ int cmd_tui(int argc, char *argv[])
         case 't':
             if (count > 0 && selected < count) {
                 char *cmd_argv[] = {
-                    "pmp-rec-cli", "tail",
+                    "trackterm-cli", "tail",
                     "--dir", (char *)storage_dir,
                     sessions[selected].sid,
                     NULL
                 };
-                run_child("pmp-rec-cli", cmd_argv);
+                run_child("trackterm-cli", cmd_argv);
             }
             break;
 

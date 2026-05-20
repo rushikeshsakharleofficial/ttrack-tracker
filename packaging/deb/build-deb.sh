@@ -1,11 +1,11 @@
 #!/bin/bash
-# Build a .deb binary package for pmp-rec using ar + tar (no dpkg-dev needed).
+# Build a .deb binary package for trackterm-rec using ar + tar (no dpkg-dev needed).
 # Run from the terminal-recorder/ project root after `make all`.
 #
 # Usage:
 #   bash packaging/deb/build-deb.sh [OUTDIR]
 #
-# Produces:  pmp-rec_0.1.0-1_amd64.deb  (and .changes stub)
+# Produces:  trackterm-rec_0.1.0-1_amd64.deb  (and .changes stub)
 # Tested on: Rocky Linux 9, Debian 12, Ubuntu 22.04+
 
 set -euo pipefail
@@ -13,7 +13,7 @@ set -euo pipefail
 VERSION="0.1.0"
 RELEASE="1"
 ARCH="amd64"
-PKG="pmp-rec"
+PKG="trackterm-rec"
 DEBNAME="${PKG}_${VERSION}-${RELEASE}_${ARCH}.deb"
 
 OUTDIR="${1:-release}"
@@ -46,11 +46,11 @@ cp -r docs/  "${ROOTDIR}/usr/share/doc/${PKG}/"
 
 # Install PAM snippets and zsh hook to share
 install -d "${ROOTDIR}/usr/share/${PKG}/pam.d-snippets"
-install -m644 scripts/pam.d/pmp-rec-sshd.snippet  "${ROOTDIR}/usr/share/${PKG}/pam.d-snippets/sshd"
-install -m644 scripts/pam.d/pmp-rec-su.snippet    "${ROOTDIR}/usr/share/${PKG}/pam.d-snippets/su"
-install -m644 scripts/pam.d/pmp-rec-sudo.snippet  "${ROOTDIR}/usr/share/${PKG}/pam.d-snippets/sudo"
-install -m644 scripts/pam.d/pmp-rec-login.snippet "${ROOTDIR}/usr/share/${PKG}/pam.d-snippets/login"
-install -m644 scripts/zshenv/pmp-rec.zsh          "${ROOTDIR}/usr/share/${PKG}/pmp-rec.zsh"
+install -m644 scripts/pam.d/trackterm-rec-sshd.snippet  "${ROOTDIR}/usr/share/${PKG}/pam.d-snippets/sshd"
+install -m644 scripts/pam.d/trackterm-rec-su.snippet    "${ROOTDIR}/usr/share/${PKG}/pam.d-snippets/su"
+install -m644 scripts/pam.d/trackterm-rec-sudo.snippet  "${ROOTDIR}/usr/share/${PKG}/pam.d-snippets/sudo"
+install -m644 scripts/pam.d/trackterm-rec-login.snippet "${ROOTDIR}/usr/share/${PKG}/pam.d-snippets/login"
+install -m644 scripts/zshenv/trackterm-rec.zsh          "${ROOTDIR}/usr/share/${PKG}/trackterm-rec.zsh"
 
 # ─── Compute installed size ───────────────────────────────────────────────────
 INSTALLED_SIZE=$(du -sk "$ROOTDIR" | awk '{print $1}')
@@ -68,16 +68,16 @@ Section: admin
 Priority: optional
 Homepage: https://github.com/percona/percona-monitoring-plugins
 Description: Percona terminal session recorder daemon
- pmp-rec captures all interactive terminal sessions (SSH, su, sudo-i,
+ trackterm-rec captures all interactive terminal sessions (SSH, su, sudo-i,
  local console) to per-session ttyrec files for forensic audit and
  compliance. Sessions are automatically recorded via a PAM module that
  hooks before the user's shell is exec'd.
  .
  Components:
-  pmp-rec       — PTY shim (runs as user)
-  pmp-recd      — Central daemon (root, epoll, writes recordings)
+  trackterm-rec       — PTY shim (runs as user)
+  trackterm-recd      — Central daemon (root, epoll, writes recordings)
   pam_record.so — PAM session module
-  pmp-rec-cli   — Audit CLI (list/play/tail/purge/tree)
+  trackterm-cli   — Audit CLI (list/play/tail/purge/tree)
 EOF
 
 # ─── Write DEBIAN/postinst ───────────────────────────────────────────────────
@@ -88,28 +88,28 @@ set -e
 case "$1" in
     configure)
         # Create audit group if absent
-        getent group pmp-audit >/dev/null 2>&1 || groupadd -r pmp-audit || true
+        getent group trackterm-audit >/dev/null 2>&1 || groupadd -r trackterm-audit || true
 
         # Create storage directory
-        install -d -m750 /var/lib/pmp-rec
-        chown root:pmp-audit /var/lib/pmp-rec 2>/dev/null || true
+        install -d -m750 /var/lib/trackterm-rec
+        chown root:trackterm-audit /var/lib/trackterm-rec 2>/dev/null || true
 
         # Create runtime dirs
-        install -d -m755 /run/pmp-rec /run/pmp-rec/sessions 2>/dev/null || true
+        install -d -m755 /run/trackterm-rec /run/trackterm-rec/sessions 2>/dev/null || true
 
         # Enable services
         if command -v systemctl >/dev/null 2>&1 && systemctl is-system-running >/dev/null 2>&1; then
             systemctl daemon-reload || true
-            systemctl enable pmp-recd.socket || true
-            systemctl enable pmp-rec-purge.timer || true
+            systemctl enable trackterm-recd.socket || true
+            systemctl enable trackterm-rec-purge.timer || true
         fi
 
         echo ""
-        echo "pmp-rec installed. Next steps:"
-        echo "  1. Add PAM hooks — see /usr/share/pmp-rec/pam.d-snippets/"
-        echo "  2. For zsh: append /usr/share/pmp-rec/pmp-rec.zsh to /etc/zshenv"
-        echo "  3. systemctl enable --now pmp-recd.socket pmp-recd.service"
-        echo "  4. systemctl enable --now pmp-rec-purge.timer"
+        echo "trackterm-rec installed. Next steps:"
+        echo "  1. Add PAM hooks — see /usr/share/trackterm-rec/pam.d-snippets/"
+        echo "  2. For zsh: append /usr/share/trackterm-rec/trackterm-rec.zsh to /etc/zshenv"
+        echo "  3. systemctl enable --now trackterm-recd.socket trackterm-recd.service"
+        echo "  4. systemctl enable --now trackterm-rec-purge.timer"
         echo ""
         ;;
 esac
@@ -125,8 +125,8 @@ set -e
 case "$1" in
     remove|upgrade)
         if command -v systemctl >/dev/null 2>&1; then
-            systemctl stop  pmp-recd.service pmp-recd.socket 2>/dev/null || true
-            systemctl disable pmp-recd.service pmp-recd.socket pmp-rec-purge.timer 2>/dev/null || true
+            systemctl stop  trackterm-recd.service trackterm-recd.socket 2>/dev/null || true
+            systemctl disable trackterm-recd.service trackterm-recd.socket trackterm-rec-purge.timer 2>/dev/null || true
         fi
         ;;
 esac
@@ -140,7 +140,7 @@ cat > "${DEBIANDIR}/postrm" << 'POSTRM'
 set -e
 case "$1" in
     purge)
-        rm -rf /etc/pmp-rec /run/pmp-rec 2>/dev/null || true
+        rm -rf /etc/trackterm-rec /run/trackterm-rec 2>/dev/null || true
         ;;
 esac
 #DEBHELPER#
@@ -149,10 +149,10 @@ chmod 755 "${DEBIANDIR}/postrm"
 
 # ─── Write DEBIAN/conffiles ──────────────────────────────────────────────────
 cat > "${DEBIANDIR}/conffiles" << 'EOF'
-/etc/pmp-rec/recd.conf
-/etc/pmp-rec/shells.allow
-/etc/sudoers.d/pmp-rec
-/etc/profile.d/pmp-rec.sh
+/etc/trackterm-rec/recd.conf
+/etc/trackterm-rec/shells.allow
+/etc/sudoers.d/trackterm-rec
+/etc/profile.d/trackterm-rec.sh
 EOF
 
 # ─── Write DEBIAN/md5sums ────────────────────────────────────────────────────
@@ -161,8 +161,8 @@ EOF
 
 # ─── Fix permissions ─────────────────────────────────────────────────────────
 find "$ROOTDIR" -type d | xargs chmod 755
-chmod 440 "${ROOTDIR}/etc/sudoers.d/pmp-rec" 2>/dev/null || true
-chmod 750 "${ROOTDIR}/var/lib/pmp-rec"       2>/dev/null || true
+chmod 440 "${ROOTDIR}/etc/sudoers.d/trackterm-rec" 2>/dev/null || true
+chmod 750 "${ROOTDIR}/var/lib/trackterm-rec"       2>/dev/null || true
 
 # ─── Assemble the .deb (ar archive: debian-binary + control.tar.gz + data.tar.xz) ─
 CONTROL_TAR="${WORKDIR}/control.tar.gz"

@@ -6,7 +6,7 @@
 #include <sys/types.h>
 #include <errno.h>
 #include <time.h>
-#include "pmp_log.h"
+#include "trackterm_log.h"
 
 /* Recursively create directory (mkdir -p). */
 static int mkdirp(const char *path, mode_t mode)
@@ -36,7 +36,7 @@ static int mkdirp(const char *path, mode_t mode)
  *   <storage_dir>/<YYYY-MM-DD>/<sid>.<ext>
  * Creates directories as needed.
  */
-int pmp_paths_build(const char *storage_dir, const char *sid,
+int trackterm_paths_build(const char *storage_dir, const char *sid,
                     const char *ext, char *out, size_t outsz)
 {
     time_t t = time(NULL);
@@ -48,7 +48,7 @@ int pmp_paths_build(const char *storage_dir, const char *sid,
     snprintf(dir, sizeof(dir), "%s/%s", storage_dir, date);
 
     if (mkdirp(dir, 0750) < 0) {
-        PMP_LOG_ERR("mkdirp %s: %s", dir, strerror(errno));
+        TRACKTERM_LOG_ERR("mkdirp %s: %s", dir, strerror(errno));
         return -1;
     }
 

@@ -1,33 +1,33 @@
-#ifndef PMP_PROTO_H
-#define PMP_PROTO_H
+#ifndef TRACKTERM_PROTO_H
+#define TRACKTERM_PROTO_H
 
 #include <stdint.h>
 #include <sys/ioctl.h>
 
-#define PMP_PROTO_MAGIC   0x504D5052u   /* "PMPR" little-endian */
-#define PMP_PROTO_VERSION 1
-#define PMP_MAX_PAYLOAD   (64u * 1024u)
+#define TRACKTERM_PROTO_MAGIC   0x504D5052u   /* "PMPR" little-endian */
+#define TRACKTERM_PROTO_VERSION 1
+#define TRACKTERM_MAX_PAYLOAD   (64u * 1024u)
 
-enum pmp_frame_type {
-    PMP_F_HELLO     = 1,
-    PMP_F_OUT       = 2,
-    PMP_F_RESIZE    = 3,
-    PMP_F_CLOSE     = 4,
-    PMP_F_HEARTBEAT = 5,
+enum trackterm_frame_type {
+    TRACKTERM_F_HELLO     = 1,
+    TRACKTERM_F_OUT       = 2,
+    TRACKTERM_F_RESIZE    = 3,
+    TRACKTERM_F_CLOSE     = 4,
+    TRACKTERM_F_HEARTBEAT = 5,
 };
 
 /* All multi-byte fields are little-endian. 28 bytes, no padding. */
-struct pmp_frame_hdr {
-    uint32_t magic;        /* PMP_PROTO_MAGIC — first frame per connection */
+struct trackterm_frame_hdr {
+    uint32_t magic;        /* TRACKTERM_PROTO_MAGIC — first frame per connection */
     uint16_t version;
-    uint16_t type;         /* enum pmp_frame_type */
+    uint16_t type;         /* enum trackterm_frame_type */
     uint64_t ts_ns;        /* CLOCK_REALTIME nanoseconds since epoch */
     uint64_t seq;          /* monotonic, per-session */
     uint32_t payload_len;
 } __attribute__((packed));
 
-/* PMP_F_HELLO payload */
-struct pmp_hello {
+/* TRACKTERM_F_HELLO payload */
+struct trackterm_hello {
     char     sid[37];          /* UUIDv4, NUL-terminated */
     char     parent_sid[37];   /* empty string if no parent */
     uint32_t loginuid;         /* from /proc/self/loginuid */
@@ -45,32 +45,32 @@ struct pmp_hello {
     char     hostname[64];     /* gethostname() */
 } __attribute__((packed));
 
-/* PMP_F_RESIZE payload: mirrors struct winsize (sys/ioctl.h) */
-struct pmp_resize {
+/* TRACKTERM_F_RESIZE payload: mirrors struct winsize (sys/ioctl.h) */
+struct trackterm_resize {
     uint16_t rows;
     uint16_t cols;
     uint16_t xpixel;
     uint16_t ypixel;
 } __attribute__((packed));
 
-/* PMP_F_CLOSE payload */
-struct pmp_close {
+/* TRACKTERM_F_CLOSE payload */
+struct trackterm_close {
     int32_t exit_status;   /* child exit status, LE */
 } __attribute__((packed));
 
-/* PMP_F_OUT: raw bytes follow the header — no separate struct */
+/* TRACKTERM_F_OUT: raw bytes follow the header — no separate struct */
 
 /* --- Frame encoder/decoder --- */
 
-struct pmp_frame {
-    struct pmp_frame_hdr hdr;
+struct trackterm_frame {
+    struct trackterm_frame_hdr hdr;
     const void          *payload;
 };
 
 /* Incremental parser for stream-oriented sockets */
 struct frame_parser {
-    struct pmp_frame_hdr hdr;
-    uint8_t  hdr_buf[sizeof(struct pmp_frame_hdr)];
+    struct trackterm_frame_hdr hdr;
+    uint8_t  hdr_buf[sizeof(struct trackterm_frame_hdr)];
     size_t   hdr_pos;       /* bytes received so far for header */
     uint8_t *payload_buf;   /* malloc'd, len = hdr.payload_len */
     size_t   payload_pos;
@@ -89,7 +89,7 @@ void frame_parser_free(struct frame_parser *p);
  */
 int frame_parser_feed(struct frame_parser *p,
                       const uint8_t *buf, size_t len,
-                      size_t *consumed, struct pmp_frame *out);
+                      size_t *consumed, struct trackterm_frame *out);
 
 /*
  * Encode a frame into buf (must be >= sizeof(hdr) + payload_len).
@@ -100,6 +100,6 @@ ssize_t frame_encode(uint8_t *buf, size_t bufsz,
                      const void *payload, uint32_t payload_len,
                      int include_magic);
 
-uint64_t pmp_clock_ns(void);
+uint64_t trackterm_clock_ns(void);
 
-#endif /* PMP_PROTO_H */
+#endif /* TRACKTERM_PROTO_H */
