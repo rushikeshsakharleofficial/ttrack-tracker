@@ -1,0 +1,14 @@
+Source: pmp-rec
+Section: admin
+Priority: optional
+Maintainer: Rushikesh Sakharle <ramsharath@instantly.ai>
+Build-Depends: debhelper-compat (= 13), libpam0g-dev, libsystemd-dev, zlib1g-dev, gcc, make
+Standards-Version: 4.6.0
+Homepage: https://github.com/percona/percona-monitoring-plugins
+
+Package: pmp-rec
+Architecture: amd64
+Depends: ${shlibs:Depends}, ${misc:Depends}, libpam-runtime, systemd
+Description: Percona terminal session recorder daemon
+ Captures all interactive terminal sessions (SSH, su, sudo-i) to
+ per-session ttyrec files for forensic audit and compliance.

@@ -1,0 +1,27 @@
+# pmp-recd configuration file
+# Installed to /etc/pmp-rec/recd.conf
+
+# Directory for session recordings
+storage_dir = /var/lib/pmp-rec
+
+# UNIX socket path
+socket_path = /run/pmp-recd.sock
+
+# Rotate session file when it exceeds this size (MiB)
+max_session_mb = 64
+
+# Delete session files older than this many days
+max_age_days = 90
+
+# Fail-closed: deny shell session if daemon is unreachable (0=off, 1=on)
+fail_closed = 0
+
+# Gzip rotated files (0=off, 1=on)
+gzip_on_rotate = 1
+
+# Set append-only attribute on closed session files via chattr +a (0=off, 1=on)
+# Requires ext4 or xfs. Adds forensic friction; root can bypass.
+chattr_append_only = 0
+
+# Log level (0=emerg ... 6=info, 7=debug)
+log_level = 6

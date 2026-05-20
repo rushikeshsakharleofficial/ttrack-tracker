@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily purge of old terminal session recordings
+Requires=pmp-rec-purge.service
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+RandomizedDelaySec=1h
+
+[Install]
+WantedBy=timers.target

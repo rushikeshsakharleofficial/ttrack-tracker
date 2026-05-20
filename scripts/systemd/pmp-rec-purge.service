@@ -1,0 +1,11 @@
+[Unit]
+Description=Percona Terminal Session Recorder — Session Purge
+After=pmp-recd.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/pmp-rec-cli purge --older-than 90
+User=root
+ProtectSystem=strict
+ReadWritePaths=/var/lib/pmp-rec
+NoNewPrivileges=yes

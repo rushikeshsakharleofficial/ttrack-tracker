@@ -1,0 +1,23 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+    configure)
+        # Enable systemd socket and timer
+        if command -v systemctl >/dev/null 2>&1 && systemctl is-system-running >/dev/null 2>&1; then
+            systemctl daemon-reload || true
+            systemctl enable pmp-recd.socket || true
+            systemctl enable pmp-rec-purge.timer || true
+        fi
+
+        # Create storage dir
+        install -d -m750 /var/lib/pmp-rec
+
+        echo ""
+        echo "pmp-rec installed. Next steps:"
+        echo "  1. Add PAM hooks — see /usr/share/pmp-rec/pam.d-snippets/"
+        echo "  2. systemctl enable --now pmp-recd.socket pmp-recd.service"
+        echo "  3. systemctl enable --now pmp-rec-purge.timer"
+        echo ""
+        ;;
+esac

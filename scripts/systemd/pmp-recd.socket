@@ -1,0 +1,12 @@
+[Unit]
+Description=Percona Terminal Session Recorder Socket
+Documentation=https://github.com/percona/percona-monitoring-plugins
+
+[Socket]
+ListenStream=/run/pmp-recd.sock
+SocketMode=0666
+Accept=no
+Service=pmp-recd.service
+
+[Install]
+WantedBy=sockets.target
