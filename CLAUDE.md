@@ -60,6 +60,38 @@ Live deployment: Ubuntu 24.04, `89.167.44.42`, user `rushikesh.sakharle`, sudo a
 | Summarize completed work | Skip; diff is self-evident |
 | Re-diagnose known bug | Check Known State section |
 | Separate agent per related file | One agent, multiple files |
+| Vague prompt "fix this" | Specify file + function + constraint |
+| Correct same mistake 3× | `/clear` and re-prompt with lesson baked in |
+
+### CLAUDE.md Size Rule
+**Target: under 200 lines.** Every line costs tokens on every session start. Test: "Would removing this cause Claude to make mistakes?" If no → cut it. Don't document what Claude already knows from code (naming conventions, standard C patterns).
+
+### `/compact` and `/clear` Usage
+- `/compact` — after completing a work phase or when context bloats
+- `/clear` — switching to unrelated task; CLAUDE.md reloads automatically
+- `/compact Focus on code changes and errors` — custom compaction keeps only what matters
+
+### Path-Scoped Rules (load only when needed)
+Put rules that apply to specific files in `.claude/rules/<topic>.md` with frontmatter:
+```markdown
+---
+paths:
+  - "src/daemon/**/*.c"
+---
+# Daemon rules: all writes go through json_escape, validate SID as UUID before path use
+```
+Keeps base CLAUDE.md shorter; rule only loads when daemon files are read.
+
+### Plan Mode Before Complex Changes
+`Shift+Tab` enters plan mode — Claude reads files and proposes approach before writing code. Use for multi-file refactors. Skip for single-function fixes.
+
+### Prompt Cache Awareness
+CLAUDE.md and system prompt are cached (reads cost 0.1×). Keep CLAUDE.md stable across sessions — edits bust the cache. Batch CLAUDE.md updates into one session, not one per task.
+
+### Model Selection
+- Default (Sonnet): routine edits, debugging, CLI tasks
+- Opus: complex architectural decisions only — `/model opus` mid-session
+- Subagent model: specify `haiku` for simple file searches to save cost
 
 ## Deploy Pattern (always in this order)
 
