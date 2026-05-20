@@ -101,9 +101,7 @@ src/cli/cmd_tui.c        — ncurses interactive browser
 git add <only changed files>   # never git add -A
 git commit -m "one-line summary
 
-Body: what changed and why. No 'what' if code is self-evident.
-
-Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
+Body: what changed and why. No 'what' if code is self-evident."
 git push
 ```
 
