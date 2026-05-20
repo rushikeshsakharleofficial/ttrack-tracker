@@ -9,7 +9,7 @@
 
 | Day | Theme | P-level | Gate |
 |-----|-------|---------|------|
-| Mon | Code fixes (PAM + service bug + socket) | P0 + P1 | — |
+| Mon ✅ | Code fixes (PAM + service bug + socket) | P0 + P1 | done |
 | Tue | Rotation + size cap + chattr | P0 | — |
 | Wed | SELinux + RHEL 9 install test | P0 | — |
 | Thu | Valgrind + load test + reconnect | P1 | **Staging gate** |
@@ -19,7 +19,7 @@
 
 ---
 
-## Day 1 — Monday: Code Fixes (3 bugs, 1 session)
+## Day 1 — Monday: Code Fixes ✅ COMPLETED
 
 **Batch all code changes together → 1 build → 1 deploy. No repeat builds.**
 
