@@ -10,7 +10,7 @@
 | Day | Theme | P-level | Gate |
 |-----|-------|---------|------|
 | Mon ✅ | Code fixes (PAM + service bug + socket) | P0 + P1 | done |
-| Tue ✅ | Rotation + size cap + chattr | P0 | done |
+| Tue ✅ | Rotation + size cap + chattr + pmp→trackterm rename | P0 | done |
 | Wed | SELinux + RHEL 9 install test | P0 | — |
 | Thu | Valgrind + load test + reconnect | P1 | **Staging gate** |
 | Fri | Fail-closed + throttle + purge timer | P2 + P3 | — |

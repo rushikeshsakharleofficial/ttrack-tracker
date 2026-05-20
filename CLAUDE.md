@@ -167,6 +167,7 @@ src/cli/cmd_tui.c        — ncurses interactive browser
 - `service=unknown`: fixed — TRACKTERM_REC_SERVICE via pam_putenv; needs live SSH verify ✓
 - PAM `should_skip()` bug: fixed — returns 1 for matching user ✓ (Day 1 done)
 - Rotation: ✓ implemented — size cap splits + renames, gzip async on close, chattr+a, hourly purge (Day 2 done)
+- Namespace rename: pmp→trackterm complete — binaries, C prefixes, env vars, paths, systemd units, group all renamed; deployed to server ✓
 
 ## Commit Pattern
 
