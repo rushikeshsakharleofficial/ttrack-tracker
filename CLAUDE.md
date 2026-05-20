@@ -8,19 +8,58 @@ Live deployment: Ubuntu 24.04, `89.167.44.42`, user `rushikesh.sakharle`, sudo a
 
 ## Token Efficiency Rules
 
-**Read before edit.** Never edit blind. Read the exact function, not the whole file — use `offset`+`limit`.
+### Read Strategy
+- **Grep before Read** — unknown location → `grep -rn "symbol" src/` first, then Read only the lines found
+- **Offset+limit always** — never Read a full file; use line range of the function needed
+- **Parallel Reads** — Read multiple files in one message when they are independent
+- **Skip unchanged files** — if not modifying it, don't read it; use Known State section below instead
+- **No re-reads after edit** — Edit/Write success = file updated; trust it
 
-**Batch edits.** All changes to one file in one Edit call. All changes to related files in one response. Never: edit → ask → edit.
+### Edit Strategy
+- **Batch per file** — all changes to one file in one Edit call, never split across messages
+- **Batch per response** — all related file changes in one response; never: edit → confirm → edit
+- **replace_all for renames** — renaming a variable/function across file → `replace_all: true`, one call
+- **Edit not Write** — prefer Edit over Write for existing files; Write only for new files or full rewrites
 
-**No re-reads after edit.** Edit succeeded = file updated. Never `cat` a file you just wrote.
+### Build Strategy
+- **One build per session** — accumulate ALL code changes first, then single `make`
+- **Filter build output** — `make 2>&1 | grep "error:" | head -10` not full output
+- **Touch+make for stale** — if make says nothing to do: `touch src/foo.c && make`
 
-**One build per session.** Accumulate all code changes first, then `make` once. Never build after each file change.
+### Agent Strategy
+- **cavecrew-builder** for 1-2 file surgical edits — offloads context entirely
+- **Parallel agents** for independent research (security review, code search) — run simultaneously
+- **Never duplicate** — if agent is doing X, don't also do X in main thread
+- **Background agents** for slow tasks (builds, deploys) — continue other work while waiting
 
-**Grep before Read.** Unknown location → `grep -n` first, then Read only the relevant lines.
+### SSH / Server Commands
+- **Chain commands** — `scp ... && ssh ... "install ... && verify ..."` — one round trip not three
+- **Filter journal** — always `--since='5 min ago'` and `| grep pattern`; never dump full journal
+- **Combine scp targets** — `scp build/a build/b build/c user@host:/tmp/` one call not three
 
-**Skip unchanged files.** If a file is not being modified, don't read it for context — only read what you need to change.
+### Context Preservation
+- **Check CLAUDE.md Known State first** — never re-diagnose what is already documented here
+- **Commit = checkpoint** — after any working change, commit immediately; don't accumulate risk
+- **One commit per logical change** — not per file, not per session — per logical unit
+- **Memory system** — write findings to `memory/` after any non-obvious discovery so next session inherits it
 
-**Agents for big tasks.** Spawn `caveman:cavecrew-builder` for isolated 1-2 file edits. Spawn parallel agents for independent research. Never duplicate agent work in main thread.
+### Output Discipline
+- **No narration** — don't say "I'll now read file X"; just read it
+- **No trailing summaries** — don't recap what was just done; user can see the diff
+- **Error-first** — always show errors before success output; grep errors first
+- **Fragments over paragraphs** — one-line findings, not multi-sentence explanations
+
+### Anti-patterns (token waste)
+| Waste | Replace with |
+|-------|-------------|
+| Read full 300-line file | `grep -n "fn_name"` → Read 10-line range |
+| Build after each file | Accumulate all edits → one `make` |
+| Re-read file after Edit | Trust Edit result |
+| Sequential SSH commands | Chain with `&&` in one call |
+| Ask "should I proceed?" | Proceed; user will correct |
+| Summarize completed work | Skip; diff is self-evident |
+| Re-diagnose known bug | Check Known State section |
+| Separate agent per related file | One agent, multiple files |
 
 ## Deploy Pattern (always in this order)
 
