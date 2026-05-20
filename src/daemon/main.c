@@ -104,7 +104,7 @@ int main(int argc, char *argv[])
             listen_fd = SD_LISTEN_FDS_START;
             PMP_LOG_INFO("using systemd socket-activated fd %d", listen_fd);
         } else {
-            listen_fd = pmp_server_bind(cfg->socket_path, 0666);
+            listen_fd = pmp_server_bind(cfg->socket_path, 0660);
             if (listen_fd < 0) {
                 PMP_LOG_ERR("bind %s: %s", cfg->socket_path, strerror(errno));
                 return 1;
@@ -112,7 +112,7 @@ int main(int argc, char *argv[])
         }
     }
 #else
-    listen_fd = pmp_server_bind(cfg->socket_path, 0666);
+    listen_fd = pmp_server_bind(cfg->socket_path, 0660);
     if (listen_fd < 0) {
         PMP_LOG_ERR("bind %s: %s", cfg->socket_path, strerror(errno));
         return 1;

@@ -277,7 +277,8 @@ int main(int argc, char *argv[])
         pmp_session_send_hello(ctx.daemon_fd,
                                ctx.sid, ctx.parent_sid,
                                ctx.loginuid,
-                               getenv("PAM_SERVICE") ? getenv("PAM_SERVICE") : "unknown",
+                               getenv("PMP_REC_SERVICE") ? getenv("PMP_REC_SERVICE") :
+                               getenv("PAM_SERVICE")     ? getenv("PAM_SERVICE")     : "unknown",
                                slave_name, ws.ws_row, ws.ws_col,
                                getenv("SSH_CLIENT"));
     }

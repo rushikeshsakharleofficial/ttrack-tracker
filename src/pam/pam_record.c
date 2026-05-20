@@ -42,7 +42,7 @@ static int should_skip(pam_handle_t *pamh, const char *service)
     pam_get_item(pamh, PAM_USER, (const void **)&user);
     for (int i = 0; skip_users[i]; i++)
         if (user && strcmp(user, skip_users[i]) == 0)
-            return 0; /* Note: root recording ON by default, admins choose */
+            return 1; /* skip — user in exclusion list */
 
     return 0;
 }
@@ -59,6 +59,14 @@ PAM_EXTERN int pam_sm_open_session(pam_handle_t *pamh, int flags,
 
     if (should_skip(pamh, service))
         return PAM_SUCCESS;
+
+    /* Propagate service name into PAM env so shim can read it.
+     * PAM_SERVICE is not always visible in child process environment. */
+    if (service) {
+        char envbuf[64];
+        snprintf(envbuf, sizeof(envbuf), "PMP_REC_SERVICE=%s", service);
+        pam_putenv(pamh, envbuf);
+    }
 
     r = pmp_pam_chain_env(pamh);
     if (r != PAM_SUCCESS)

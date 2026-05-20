@@ -33,10 +33,16 @@ case "$DISTRO" in
         ;;
 esac
 
+echo "==> Creating pmp-audit group..."
+groupadd -r pmp-audit 2>/dev/null || true
+
 echo "==> Installing binaries..."
 install -Dm755 build/pmp-rec     /usr/libexec/pmp-rec
 install -Dm755 build/pmp-recd    /usr/libexec/pmp-recd
 install -Dm755 build/pmp-rec-cli /usr/bin/pmp-rec-cli
+# setgid pmp-audit on shim: process inherits gid=pmp-audit → can connect to 0660 socket
+chgrp pmp-audit /usr/libexec/pmp-rec
+chmod g+s       /usr/libexec/pmp-rec
 install -Dm755 "build/pam_record.so" "${PAM_DIR}/pam_record.so"
 
 echo "==> Installing config..."

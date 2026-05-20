@@ -10,6 +10,7 @@
 #include <sys/stat.h>
 #include <sys/epoll.h>
 
+#include <grp.h>
 #include "pmp_proto.h"
 #include "pmp_log.h"
 #include "pmp_paths.h"
@@ -63,6 +64,12 @@ int pmp_server_bind(const char *sockpath, mode_t mode)
     }
 
     chmod(sockpath, mode);
+
+    /* Set group ownership to pmp-audit so mode 0660 restricts access correctly.
+     * Only processes running with gid=pmp-audit (via setgid bit on pmp-rec) connect. */
+    struct group *gr = getgrnam("pmp-audit");
+    if (gr)
+        chown(sockpath, (uid_t)-1, gr->gr_gid);
 
     if (listen(fd, 64) < 0) {
         close(fd);
