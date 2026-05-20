@@ -14,6 +14,8 @@ Live deployment: Ubuntu 24.04, `89.167.44.42`, user `rushikesh.sakharle`, sudo a
 - **Parallel Reads** — Read multiple files in one message when they are independent
 - **Skip unchanged files** — if not modifying it, don't read it; use Known State section below instead
 - **No re-reads after edit** — Edit/Write success = file updated; trust it
+- **No re-reads of CLAUDE.md** — already in context at session start; never Read it again mid-session
+- **No full-file reads for edits** — grep for the target line number, then `offset`+`limit` to that function only; never Read the whole file just to find where to edit
 
 ### Edit Strategy
 - **Batch per file** — all changes to one file in one Edit call, never split across messages
