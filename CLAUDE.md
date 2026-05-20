@@ -163,9 +163,9 @@ src/cli/cmd_tui.c        — ncurses interactive browser
 - Play loop fixed: same-session and active-session guards in cmd_play.c
 - NVM startup delay fixed: `~/.bashrc` on 89.167.44.42 skips NVM when `PMP_REC_SHIM_CHILD=1`
 - `/dev/tty` fix in shim/main.c: bypasses bash fd1 redirect during profile.d sourcing
-- Socket mode: still 0666 (P1 fix pending per PLAN.md)
-- `service=unknown`: not fixed yet (Day 1 of PLAN.md)
-- PAM `should_skip()` bug: not fixed yet (Day 1 of PLAN.md)
+- Socket mode: 0660, group pmp-audit, shim has setgid pmp-audit ✓ (Day 1 done)
+- `service=unknown`: fixed — PMP_REC_SERVICE via pam_putenv; needs live SSH verify ✓
+- PAM `should_skip()` bug: fixed — returns 1 for matching user ✓ (Day 1 done)
 - Rotation: not implemented (Day 2 of PLAN.md)
 
 ## Commit Pattern
