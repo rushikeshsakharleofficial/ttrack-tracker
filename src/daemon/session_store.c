@@ -12,6 +12,23 @@
 #include "pmp_ttyrec.h"
 #include "pmp_log.h"
 
+/* From config.c */
+typedef struct pmp_daemon_config {
+    char   storage_dir[256];
+    char   socket_path[256];
+    size_t max_session_bytes;
+    int    max_age_days;
+    int    fail_closed;
+    int    gzip_on_rotate;
+    int    chattr_append_only;
+    int    log_level;
+} pmp_daemon_config_t;
+pmp_daemon_config_t *pmp_config_get(void);
+
+/* From rotate.c */
+void pmp_rotate_file_async(const char *path);
+void pmp_chattr_append_only(const char *path);
+
 static void json_escape(const char *src, char *dst, size_t dstsz)
 {
     size_t d = 0;
@@ -47,6 +64,8 @@ typedef struct pmp_session_store {
     uint64_t bytes_written;
     time_t   start_ts;
     char     storage_dir[256];
+    char     ttyrec_path[512];   /* current ttyrec path (for gzip/chattr at close) */
+    int      rotation_part;      /* 0=original, 1+=rotated parts */
 } pmp_session_store_t;
 
 pmp_session_store_t *pmp_store_open(const char *storage_dir,
@@ -67,6 +86,7 @@ pmp_session_store_t *pmp_store_open(const char *storage_dir,
     /* Open ttyrec file */
     if (pmp_paths_build(storage_dir, h->sid, "ttyrec", path, sizeof(path)) < 0)
         goto err;
+    strncpy(s->ttyrec_path, path, sizeof(s->ttyrec_path) - 1);
     s->ttyrec_fd = open(path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0640);
     if (s->ttyrec_fd < 0) {
         PMP_LOG_ERR("open %s: %s", path, strerror(errno));
@@ -128,6 +148,37 @@ int pmp_store_write_output(pmp_session_store_t *s,
                            const uint8_t *data, uint32_t len)
 {
     if (s->ttyrec_fd < 0) return -1;
+
+    /* Size cap: rotate to a new part file when limit reached */
+    pmp_daemon_config_t *cfg = pmp_config_get();
+    if (cfg->max_session_bytes > 0 &&
+        s->bytes_written >= cfg->max_session_bytes) {
+        /* Rename current ttyrec → sid.ttyrec.<part>, open fresh sid.ttyrec */
+        char rotated[540];
+        s->rotation_part++;
+        snprintf(rotated, sizeof(rotated), "%s.%d", s->ttyrec_path, s->rotation_part);
+        rename(s->ttyrec_path, rotated);
+
+        if (cfg->gzip_on_rotate)
+            pmp_rotate_file_async(rotated);
+        if (cfg->chattr_append_only)
+            pmp_chattr_append_only(rotated);
+
+        /* Write rotation event to sidecar */
+        if (s->events_fd >= 0) {
+            char body[64];
+            double t = (double)(time(NULL) - s->start_ts);
+            snprintf(body, sizeof(body), "\"type\":\"rotated\",\"part\":%d", s->rotation_part);
+            ttyrec_write_event(s->events_fd, t, body);
+        }
+
+        fsync(s->ttyrec_fd);
+        close(s->ttyrec_fd);
+        s->ttyrec_fd = open(s->ttyrec_path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0640);
+        s->bytes_written = 0;
+        PMP_LOG_INFO("session %s: rotated to part %d", s->sid, s->rotation_part);
+    }
+
     int r = ttyrec_write_frame(s->ttyrec_fd, data, len);
     if (r == 0) s->bytes_written += len;
     return r;
@@ -162,6 +213,12 @@ void pmp_store_close(pmp_session_store_t *s, int exit_status)
         fsync(s->ttyrec_fd);
         close(s->ttyrec_fd);
         s->ttyrec_fd = -1;
+
+        pmp_daemon_config_t *cfg = pmp_config_get();
+        if (cfg->gzip_on_rotate && s->ttyrec_path[0])
+            pmp_rotate_file_async(s->ttyrec_path);
+        else if (cfg->chattr_append_only && s->ttyrec_path[0])
+            pmp_chattr_append_only(s->ttyrec_path);
     }
 
     if (s->meta_fd >= 0) {

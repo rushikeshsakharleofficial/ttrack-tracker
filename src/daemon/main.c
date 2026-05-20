@@ -27,6 +27,7 @@ int  pmp_server_accept(int listen_fd, const char *storage_dir, int epoll_fd);
 int  pmp_server_handle_client(void *client, int epoll_fd);
 void pmp_server_drop_client(void *client, int epoll_fd);
 int  pmp_config_load(const char *path);
+void pmp_purge_old_sessions(const char *storage_dir, int max_age_days);
 
 typedef struct pmp_daemon_config {
     char    storage_dir[256];
@@ -138,9 +139,18 @@ int main(int argc, char *argv[])
     #define MAX_EVENTS 64
     struct epoll_event events[MAX_EVENTS];
 
+    time_t last_purge = 0;
+
     while (g_running) {
         /* Ping systemd watchdog every epoll cycle (≤5s) */
         sd_notify(0, "WATCHDOG=1");
+
+        /* Purge old sessions once per hour */
+        time_t now = time(NULL);
+        if (cfg->max_age_days > 0 && now - last_purge >= 3600) {
+            pmp_purge_old_sessions(cfg->storage_dir, cfg->max_age_days);
+            last_purge = now;
+        }
 
         int n = epoll_wait(epoll_fd, events, MAX_EVENTS, 5000 /* ms */);
         if (n < 0) {

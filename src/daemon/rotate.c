@@ -10,6 +10,8 @@
 #include <pthread.h>
 #include <fcntl.h>
 #include <zlib.h>
+#include <linux/fs.h>
+#include <sys/ioctl.h>
 #include "pmp_log.h"
 
 static void gzip_file(const char *src_path)
@@ -96,4 +98,21 @@ void pmp_purge_old_sessions(const char *storage_dir, int max_age_days)
         PMP_LOG_INFO("purged date dir %s", datedir);
     }
     closedir(top);
+}
+
+/* Set FS_APPEND_FL (chattr +a) on a closed session file.
+ * Forensic friction: even root must explicitly clear the flag to truncate.
+ * Silently skips on non-ext4/xfs (EOPNOTSUPP) or permission errors. */
+void pmp_chattr_append_only(const char *path)
+{
+    int fd = open(path, O_RDONLY | O_CLOEXEC);
+    if (fd < 0) return;
+
+    int flags = 0;
+    if (ioctl(fd, FS_IOC_GETFLAGS, &flags) == 0) {
+        flags |= FS_APPEND_FL;
+        if (ioctl(fd, FS_IOC_SETFLAGS, &flags) < 0 && errno != EOPNOTSUPP)
+            PMP_LOG_WARN("chattr +a %s: %s", path, strerror(errno));
+    }
+    close(fd);
 }
