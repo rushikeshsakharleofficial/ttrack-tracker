@@ -17,8 +17,9 @@ Record and replay Linux terminal sessions as asciinema-compatible casts, with an
 ## Features
 
 - **Record & replay** any interactive shell session (`script(1)` / `asciinema`-style).
-- **asciinema v2 cast** output — inspectable JSON-lines; also playable with `asciinema play`.
+- **asciinema v2 cast** output (local recordings are inspectable JSON-lines and play with `asciinema play`; central recordings are encrypted — `export` them first).
 - **Central audit store** via the `ttrackd` root daemon: all users' sessions in `/var/lib/ttrack`, `root:root 0700` — normal users cannot read recordings.
+- **Encrypted at rest** — central recordings are AES-256-GCM encrypted; `cat`/`strings`/`grep` on a `.cast` reveal only ciphertext. Readable solely with the root-only key via `ttrack`.
 - **Live tail** an in-progress session (`ttrack tail <id>`, root).
 - **Audit CLI**: list users, list a user's sessions, replay by id, tree view.
 - **Auto-record on login** via an optional `profile.d` hook (skips nested `sudo su -`).
@@ -126,6 +127,7 @@ These read the central root-only store and require root:
 | `ttrack tail <sessionid>` | Live-stream an in-progress session from the daemon. |
 | `ttrack tree` | Print a users → sessions tree. |
 | `ttrack search [--from T] [--to T] [--user U] [-i] <pattern>` | Find a string across all recordings (command + output), optionally within a time range. |
+| `ttrack export [-o file] <sessionid>` | Decrypt a recording to a plaintext asciinema cast (for offline use / `asciinema play`). |
 
 ## Audit mode (central root-only store)
 
@@ -184,10 +186,32 @@ directory; on its next startup `ttrackd` ingests those files into the central st
 (source files are opened `O_NOFOLLOW` and verified regular, so a user cannot symlink
 a root-readable target into the store).
 
+### Encryption at rest
+
+Central recordings are encrypted with AES-256-GCM. On disk a `.cast` is opaque —
+`cat`, `strings`, and `grep` show only ciphertext. `ttrack` decrypts transparently
+for `play-user`, `search`, `tail`, and `export` using the key at
+`/var/lib/ttrack/.ttrack.key` (`root:root 0600`), created by the daemon on first run.
+
+```text
+$ sudo strings /var/lib/ttrack/alice/20260526T151022-1426734.cast | head -1
+TTEC1                          # magic prefix; the rest is ciphertext
+
+$ sudo ttrack export -o session.cast 20260526T151022-1426734
+exported plaintext cast to session.cast      # now asciinema-compatible
+```
+
+> **Honest scope:** this means *no plaintext session data sits on disk* and the
+> files are unreadable without the key — not that "only ttrack can ever read them."
+> Anyone with root **and** the key can decrypt. **Back up `/var/lib/ttrack/.ttrack.key`** —
+> if it is lost, every encrypted recording is permanently unreadable. The daemon
+> refuses to start if the key is missing while encrypted recordings exist.
+
 **Integrity note:** this provides root-only *access* to recordings plus live tail. It
 is *not* tamper-proof against a malicious user, who could avoid `ttrack` entirely
 (run another binary, `pkill ttrack`, bypass `profile.d`). Non-circumventable capture
-requires PAM- or kernel-stage hooks, which this project does not implement.
+requires PAM- or kernel-stage hooks, which this project does not implement. The
+user-local fail-open fallback is plaintext until the daemon ingests and encrypts it.
 
 ## Auto-record on login (optional)
 
@@ -236,8 +260,10 @@ Recordings are asciinema v2 cast files (UTF-8, JSON-lines):
 [0.131000, "o", "hello\r\n"]
 ```
 
-The first line is a header; each subsequent line is `[time_seconds, "o", data]`. Files
-are also viewable with `asciinema cat` and playable with `asciinema play`.
+The first line is a header; each subsequent line is `[time_seconds, "o", data]`.
+Local (plaintext) recordings are viewable with `asciinema cat` and playable with
+`asciinema play`. Central recordings are encrypted — run `ttrack export` first to
+get an asciinema-compatible plaintext cast.
 
 ## Building and packaging
 
@@ -292,3 +318,4 @@ Licensed under the GNU General Public License v2.0. See [LICENSE](LICENSE).
 - Set GitHub repository **Topics** (Settings → Topics), e.g. `linux`, `terminal`, `session-recording`, `asciinema`, `audit`, `cli`, `golang`, `pty`.
 - Add a 1280×640 social preview image (Settings → Social preview): tool name, one-line description, a terminal screenshot.
 - Add a recorded `.cast`/GIF demo asset and embed it in the Demo section.
+- **Back up the encryption key** `/var/lib/ttrack/.ttrack.key` offsite — losing it makes all encrypted recordings permanently unreadable.

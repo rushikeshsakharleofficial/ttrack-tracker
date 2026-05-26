@@ -32,34 +32,36 @@ func Run(args []string) error {
 	// Resolve the argument: try it as given, then fall back to the store dir
 	// so a bare filename from `ttrack ls` works from any directory.
 	name := fs.Arg(0)
-	f, err := os.Open(name)
-	if err != nil && !filepath.IsAbs(name) {
-		if alt, aerr := os.Open(filepath.Join(store.Dir(), name)); aerr == nil {
-			f, err = alt, nil
+	path := name
+	if _, statErr := os.Stat(path); statErr != nil && !filepath.IsAbs(name) {
+		if alt := filepath.Join(store.Dir(), name); fileExists(alt) {
+			path = alt
 		}
 	}
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	return play(f, *speed, *maxIdle)
+	return PlayFile(path, *speed, *maxIdle)
 }
 
-// PlayFile replays the cast at path with the given speed and idle cap.
+func fileExists(p string) bool {
+	_, err := os.Stat(p)
+	return err == nil
+}
+
+// PlayFile replays the cast at path with the given speed and idle cap,
+// transparently decrypting encrypted recordings.
 func PlayFile(path string, speed, maxIdle float64) error {
 	if speed <= 0 {
 		speed = 1.0
 	}
-	f, err := os.Open(path)
+	rc, err := store.OpenCast(path)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-	return play(f, speed, maxIdle)
+	defer rc.Close()
+	return play(rc, speed, maxIdle)
 }
 
-func play(f *os.File, speed, maxIdle float64) error {
-	r := bufio.NewReader(f)
+func play(rc io.Reader, speed, maxIdle float64) error {
+	r := bufio.NewReader(rc)
 	if _, err := cast.ReadHeader(r); err != nil {
 		return err
 	}

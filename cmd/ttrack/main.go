@@ -35,6 +35,8 @@ func main() {
 		err = audit.Tree(os.Args[2:])
 	case "search":
 		err = audit.Search(os.Args[2:])
+	case "export":
+		err = audit.Export(os.Args[2:])
 	case "completion":
 		err = complete.Script(os.Args[2:])
 	case "__complete":
@@ -68,10 +70,12 @@ audit commands (read the central root-only store; run as root):
   ttrack tail <id>                     live-stream an in-progress session
   ttrack tree                          users -> sessions tree
   ttrack search [opts] <string>        find a string across recordings
+  ttrack export [-o file] <id>         decrypt a session to a plaintext cast
 
   ttrack completion bash               print the bash completion script
 
 search opts: --from / --to <YYYY-MM-DD[ HH:MM]>, --user <name>, -i
+recordings in the central store are encrypted at rest (opaque to cat/strings)
 
 local recordings: $TTRACK_DIR or ~/.local/share/ttrack
 central store:    $TTRACK_CENTRAL_DIR or /var/lib/ttrack (root:root 0700)

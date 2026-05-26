@@ -10,6 +10,7 @@ package store
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -18,6 +19,7 @@ import (
 	"time"
 
 	"ttrack/internal/cast"
+	"ttrack/internal/crypto"
 )
 
 // Dir returns the user-local recordings directory.
@@ -38,6 +40,48 @@ func CentralDir() string {
 		return d
 	}
 	return "/var/lib/ttrack"
+}
+
+// KeyPath returns the at-rest encryption key path (root-only).
+func KeyPath() string {
+	return filepath.Join(CentralDir(), ".ttrack.key")
+}
+
+type castReadCloser struct {
+	io.Reader
+	f *os.File
+}
+
+func (c *castReadCloser) Close() error { return c.f.Close() }
+
+// OpenCast opens a cast file for reading, transparently decrypting it if it is
+// an encrypted (magic-prefixed) file. Plaintext files are returned as-is.
+func OpenCast(path string) (io.ReadCloser, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	magic := make([]byte, len(crypto.Magic))
+	n, _ := io.ReadFull(f, magic)
+	if n == len(crypto.Magic) && string(magic) == crypto.Magic {
+		key, kerr := os.ReadFile(KeyPath())
+		if kerr != nil {
+			f.Close()
+			return nil, fmt.Errorf("cannot read decryption key %s: %w", KeyPath(), kerr)
+		}
+		dr, derr := crypto.NewReader(f, key)
+		if derr != nil {
+			f.Close()
+			return nil, derr
+		}
+		return &castReadCloser{Reader: dr, f: f}, nil
+	}
+	// Plaintext: rewind and hand back the raw file.
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		f.Close()
+		return nil, err
+	}
+	return f, nil
 }
 
 // NewPath returns an auto-named cast path in the user-local dir, creating it.
@@ -144,12 +188,12 @@ func started(h cast.Header) string {
 }
 
 func readHeader(path string) (cast.Header, error) {
-	f, err := os.Open(path)
+	rc, err := OpenCast(path)
 	if err != nil {
 		return cast.Header{}, err
 	}
-	defer f.Close()
-	return cast.ReadHeader(bufio.NewReader(f))
+	defer rc.Close()
+	return cast.ReadHeader(bufio.NewReader(rc))
 }
 
 // Header reads and returns a cast file's header (exported for CLI use).

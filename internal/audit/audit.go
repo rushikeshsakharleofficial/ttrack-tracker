@@ -93,6 +93,45 @@ func PlayUser(args []string) error {
 	return play.PlayFile(path, *speed, *idle)
 }
 
+// Export handles `ttrack export [-o file] <sessionid>` — decrypts a central
+// recording to a plaintext asciinema v2 cast (for offline use / `asciinema play`).
+func Export(args []string) error {
+	fs := flag.NewFlagSet("export", flag.ContinueOnError)
+	out := fs.String("o", "", "output file (default: stdout)")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() < 1 {
+		return fmt.Errorf("usage: ttrack export [-o file] <sessionid>")
+	}
+	path, _, err := store.FindCentral(fs.Arg(0))
+	if err != nil {
+		return notRoot(err)
+	}
+	rc, err := store.OpenCast(path)
+	if err != nil {
+		return err
+	}
+	defer rc.Close()
+
+	var w io.Writer = os.Stdout
+	if *out != "" {
+		f, ferr := os.Create(*out)
+		if ferr != nil {
+			return ferr
+		}
+		defer f.Close()
+		w = f
+	}
+	if _, err := io.Copy(w, rc); err != nil {
+		return err
+	}
+	if *out != "" {
+		fmt.Fprintf(os.Stderr, "exported plaintext cast to %s\n", *out)
+	}
+	return nil
+}
+
 // Tree handles `ttrack tree` — users -> sessions.
 func Tree(args []string) error {
 	users, err := store.Users()
@@ -238,12 +277,12 @@ func scanCast(path, needle string, ignore bool, h cast.Header) (cmdMatch bool, s
 		cmdMatch = true
 	}
 
-	f, err := os.Open(path)
+	rc, err := store.OpenCast(path)
 	if err != nil {
 		return cmdMatch, snips
 	}
-	defer f.Close()
-	r := bufio.NewReader(f)
+	defer rc.Close()
+	r := bufio.NewReader(rc)
 	if _, err := cast.ReadHeader(r); err != nil {
 		return cmdMatch, snips
 	}

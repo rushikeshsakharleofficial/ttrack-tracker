@@ -23,12 +23,14 @@ import (
 
 	"golang.org/x/sys/unix"
 
+	"ttrack/internal/crypto"
 	"ttrack/internal/store"
 )
 
 type session struct {
 	mu   sync.Mutex
-	f    *os.File
+	f    *os.File  // underlying file, for sync/close
+	enc  io.Writer // encrypting writer over f; recorded bytes land as ciphertext
 	subs map[net.Conn]struct{}
 	done bool
 }
@@ -36,8 +38,8 @@ type session struct {
 func (s *session) write(b []byte) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.f != nil {
-		_, _ = s.f.Write(b)
+	if s.enc != nil {
+		_, _ = s.enc.Write(b) // encrypted to disk
 	}
 	for c := range s.subs {
 		_ = c.SetWriteDeadline(time.Now().Add(2 * time.Second))
@@ -51,9 +53,11 @@ func (s *session) write(b []byte) {
 func (s *session) addTailer(c net.Conn, path string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	// Replay what has been recorded so far, then subscribe to live bytes.
-	if data, err := os.ReadFile(path); err == nil {
-		_, _ = c.Write(data)
+	// Replay what has been recorded so far (decrypted), then subscribe to live
+	// plaintext bytes.
+	if rc, err := store.OpenCast(path); err == nil {
+		_, _ = io.Copy(c, rc)
+		rc.Close()
 	}
 	s.subs[c] = struct{}{}
 }
@@ -76,6 +80,7 @@ func (s *session) close() {
 type registry struct {
 	mu   sync.Mutex
 	live map[string]sessionRef
+	key  []byte // at-rest encryption key
 }
 
 type sessionRef struct {
@@ -112,7 +117,12 @@ func Run(socketPath string) error {
 	if err := os.Chmod(store.CentralDir(), 0o700); err != nil {
 		return fmt.Errorf("chmod central dir: %w", err)
 	}
-	ingestLocalRecordings()
+
+	key, err := ensureKey()
+	if err != nil {
+		return err
+	}
+	ingestLocalRecordings(key)
 
 	_ = os.Remove(socketPath)
 	ln, err := net.Listen("unix", socketPath)
@@ -125,8 +135,8 @@ func Run(socketPath string) error {
 		return fmt.Errorf("chmod socket: %w", err)
 	}
 
-	reg := &registry{live: map[string]sessionRef{}}
-	fmt.Fprintf(os.Stderr, "ttrackd: listening on %s, storing in %s\n",
+	reg := &registry{live: map[string]sessionRef{}, key: key}
+	fmt.Fprintf(os.Stderr, "ttrackd: listening on %s, storing in %s (encrypted)\n",
 		socketPath, store.CentralDir())
 
 	for {
@@ -179,8 +189,13 @@ func handleRec(conn *net.UnixConn, br *bufio.Reader, cred *unix.Ucred, reg *regi
 	if err != nil {
 		return
 	}
+	enc, err := crypto.NewWriter(f, reg.key)
+	if err != nil {
+		f.Close()
+		return
+	}
 
-	sess := &session{f: f, subs: map[net.Conn]struct{}{}}
+	sess := &session{f: f, enc: enc, subs: map[net.Conn]struct{}{}}
 	reg.add(id, sess, path)
 	defer func() {
 		sess.close()
@@ -238,10 +253,70 @@ func lookupUser(uid uint32) string {
 	return strconv.FormatUint(uint64(uid), 10)
 }
 
+// ensureKey loads the at-rest key, creating it on first run. It refuses to
+// create a new key when recordings already exist (a new key would make them
+// permanently unreadable) — the operator must restore the original key.
+func ensureKey() ([]byte, error) {
+	kp := store.KeyPath()
+	data, err := os.ReadFile(kp)
+	if err == nil {
+		if len(data) != crypto.KeySize {
+			return nil, fmt.Errorf("key %s has wrong size %d", kp, len(data))
+		}
+		return data, nil
+	}
+	if !os.IsNotExist(err) {
+		return nil, fmt.Errorf("read key %s: %w", kp, err)
+	}
+	if encryptedRecordingsExist() {
+		return nil, fmt.Errorf("encryption key %s is missing but ENCRYPTED recordings exist in %s; "+
+			"restore the original key — refusing to start (a new key would make them permanently unreadable)",
+			kp, store.CentralDir())
+	}
+	key, gerr := crypto.GenerateKey()
+	if gerr != nil {
+		return nil, gerr
+	}
+	if werr := os.WriteFile(kp, key, 0o600); werr != nil {
+		return nil, fmt.Errorf("write key %s: %w", kp, werr)
+	}
+	_ = os.Chmod(kp, 0o600)
+	fmt.Fprintf(os.Stderr,
+		"ttrackd: created NEW encryption key at %s — BACK IT UP NOW. "+
+			"Losing it makes every recording permanently unreadable.\n", kp)
+	return key, nil
+}
+
+// encryptedRecordingsExist reports whether any central cast is already
+// encrypted (magic-prefixed). Plaintext recordings from before encryption was
+// enabled do not need a key and are not a reason to refuse startup.
+func encryptedRecordingsExist() bool {
+	users, err := store.Users()
+	if err != nil {
+		return false
+	}
+	for _, u := range users {
+		names, _ := store.UserSessions(u)
+		for _, n := range names {
+			f, err := os.Open(filepath.Join(store.CentralDir(), u, n))
+			if err != nil {
+				continue
+			}
+			magic := make([]byte, len(crypto.Magic))
+			rn, _ := io.ReadFull(f, magic)
+			f.Close()
+			if rn == len(crypto.Magic) && string(magic) == crypto.Magic {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // ingestLocalRecordings sweeps per-user local recordings into the central
-// store on startup, so sessions recorded while the daemon was down become
-// root-only. Source files are removed after a successful copy.
-func ingestLocalRecordings() {
+// store on startup, encrypting them so sessions recorded while the daemon was
+// down become root-only. Source files are removed after a successful copy.
+func ingestLocalRecordings(key []byte) {
 	homes := []string{"/root"}
 	if entries, err := os.ReadDir("/home"); err == nil {
 		for _, e := range entries {
@@ -270,18 +345,18 @@ func ingestLocalRecordings() {
 			}
 			sp := filepath.Join(src, e.Name())
 			dp := filepath.Join(dstDir, e.Name())
-			if copyFile(sp, dp) == nil {
+			if copyFile(sp, dp, key) == nil {
 				_ = os.Remove(sp)
 			}
 		}
 	}
 }
 
-// copyFile copies a user-owned source into the root-only central store.
-// The source is opened O_NOFOLLOW and verified to be a regular file, so a
-// user cannot symlink a recording at a root-readable target (e.g.
-// /etc/shadow) and have the root daemon copy it into the central store.
-func copyFile(src, dst string) error {
+// copyFile copies a user-owned plaintext source into the root-only central
+// store, encrypting it. The source is opened O_NOFOLLOW and verified to be a
+// regular file, so a user cannot symlink a recording at a root-readable target
+// (e.g. /etc/shadow) and have the root daemon copy it into the central store.
+func copyFile(src, dst string, key []byte) error {
 	in, err := os.OpenFile(src, os.O_RDONLY|unix.O_NOFOLLOW, 0)
 	if err != nil {
 		return err // ELOOP if src is a symlink
@@ -298,7 +373,12 @@ func copyFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := io.Copy(out, in); err != nil {
+	enc, err := crypto.NewWriter(out, key)
+	if err != nil {
+		out.Close()
+		return err
+	}
+	if _, err := io.Copy(enc, in); err != nil {
 		out.Close()
 		return err
 	}
