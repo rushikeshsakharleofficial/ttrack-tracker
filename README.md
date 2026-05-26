@@ -7,12 +7,32 @@ Record and replay Linux terminal sessions as asciinema-compatible casts, with an
 [![CI](https://github.com/rushikeshsakharleofficial/ttrack-tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/rushikeshsakharleofficial/ttrack-tracker/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/rushikeshsakharleofficial/ttrack-tracker)](https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases)
 [![License: GPL-2.0](https://img.shields.io/badge/license-GPL--2.0-blue.svg)](LICENSE)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+[![Issues](https://img.shields.io/github/issues/rushikeshsakharleofficial/ttrack-tracker)](https://github.com/rushikeshsakharleofficial/ttrack-tracker/issues)
+
+**Free and 100% open source.** Contributions welcome — [open an issue](https://github.com/rushikeshsakharleofficial/ttrack-tracker/issues) or [send a PR](CONTRIBUTING.md).
 
 </div>
 
 ---
 
 `ttrack` is a command-line terminal session recorder for Linux. It runs a shell under a PTY, captures the output as an [asciinema v2](https://docs.asciinema.org/manual/asciicast/v2/) cast file, and replays it with original timing. A companion root daemon, `ttrackd`, collects sessions from all users into a root-only central store (`/var/lib/ttrack`) so a host's operator activity can be reviewed and live-tailed for audit. It is a single static Go binary with no runtime dependencies.
+
+## Table of contents
+
+- [Features](#features)
+- [Demo](#demo)
+- [Installation](#installation)
+- [Quick start](#quick-start)
+- [Commands](#commands)
+- [Audit mode (central root-only store)](#audit-mode-central-root-only-store)
+- [Auto-record on login](#auto-record-on-login-optional)
+- [Shell completion](#shell-completion)
+- [Configuration guide](#configuration-guide)
+- [File format](#file-format)
+- [Building and packaging](#building-and-packaging)
+- [Contributing](#contributing)
+- [License](#license)
 
 ## Features
 
@@ -246,17 +266,68 @@ ttrack completion bash | sudo tee /usr/share/bash-completion/completions/ttrack
 It completes subcommands, flags, local sessions (for `play`), and — when run as root —
 users and central session ids (for `ls-user`, `play-user`, `tail`).
 
-## Configuration
+## Configuration guide
 
-`ttrack` is configured entirely through environment variables:
+`ttrack` and `ttrackd` need no config file — behavior is controlled by environment
+variables, filesystem locations, and the systemd unit.
 
-| Variable | Default | Description |
-|:---------|:--------|:------------|
-| `TTRACK_DIR` | `~/.local/share/ttrack` | User-local recordings directory. |
-| `TTRACK_CENTRAL_DIR` | `/var/lib/ttrack` | Central root-only store (daemon + audit commands). |
-| `TTRACKD_SOCK` | `/run/ttrackd.sock` | Daemon socket used by `ttrack rec` and audit commands. |
-| `TTRACK_QUIET` | unset | If set, `ttrack rec` suppresses banner and saved-path message. |
-| `SHELL` | `/bin/bash` | Shell launched by `ttrack rec` when no command is given. |
+### Environment variables
+
+| Variable | Default | Used by | Description |
+|:---------|:--------|:--------|:------------|
+| `TTRACK_DIR` | `~/.local/share/ttrack` | `ttrack` | User-local recordings dir (fail-open fallback + local `ls`/`play`). |
+| `TTRACK_CENTRAL_DIR` | `/var/lib/ttrack` | `ttrack`, `ttrackd` | Central root-only store. |
+| `TTRACKD_SOCK` | `/run/ttrackd.sock` | `ttrack`, `ttrackd` | Daemon unix socket. |
+| `TTRACK_QUIET` | unset | `ttrack rec` | Any non-empty value suppresses the banner + saved-path message. |
+| `SHELL` | `/bin/bash` | `ttrack rec` | Shell launched when no command is given. |
+
+To point a whole host at a different store, set `TTRACK_CENTRAL_DIR` and `TTRACKD_SOCK`
+in the systemd unit (see below) **and** in users' environment so `ttrack rec` reaches
+the same daemon.
+
+### Filesystem layout and permissions
+
+| Path | Owner / mode | Purpose |
+|:-----|:-------------|:--------|
+| `/usr/bin/ttrack` | `root 0755` | CLI |
+| `/usr/libexec/ttrackd` | `root 0755` | daemon |
+| `/var/lib/ttrack/` | `root:root 0700` | central store (normal users cannot enter) |
+| `/var/lib/ttrack/<user>/<id>.cast` | `root:root 0600` | encrypted recording |
+| `/var/lib/ttrack/.ttrack.key` | `root:root 0600`, `chattr +i` | per-server AES key (immutable) |
+| `/run/ttrackd.sock` | `root 0666` | recorder connect socket (file access is what enforces privacy, not the socket) |
+| `/etc/profile.d/ttrack-autorec.sh` | `root 0644` | optional auto-record login hook |
+| `~/.local/share/ttrack/` | the user | local fail-open recordings |
+
+### Encryption key
+
+The daemon creates a unique random key per host on first start. It is `0600` and set
+immutable (`chattr +i`) so it cannot be removed or modified by `rm`/`vi`/`sed`/`>`/`tee`,
+even by root, until `chattr -i`. **Back it up** — losing it makes every encrypted
+recording unreadable. The daemon refuses to start if the key is missing while encrypted
+recordings exist. To rotate: `chattr -i`, move recordings aside or `export` them, remove
+the key, restart the daemon (it generates a fresh one).
+
+### Daemon service
+
+```bash
+sudo systemctl status ttrackd
+sudo systemctl restart ttrackd
+sudo journalctl -u ttrackd --no-pager        # logs, incl. the key-backup warning
+```
+
+To override the store/socket, add a drop-in:
+
+```bash
+sudo systemctl edit ttrackd
+# [Service]
+# Environment=TTRACK_CENTRAL_DIR=/srv/ttrack
+# Environment=TTRACKD_SOCK=/run/ttrackd.sock
+```
+
+### Shell completion
+
+Installed to `/usr/share/bash-completion/completions/ttrack`. Enable manually with
+`ttrack completion bash | sudo tee /usr/share/bash-completion/completions/ttrack`.
 
 ## File format
 
@@ -284,8 +355,12 @@ make VERSION=1.2.3 packages
 ```
 
 Packaging uses [`nfpm`](https://github.com/goreleaser/nfpm) (`go install` it first).
-CI builds packages on every push (downloadable as the `ttrack-packages` workflow
-artifact); pushing a `v*` tag publishes `rpm`/`deb`/binary/checksums to a GitHub Release.
+
+**Releases are automated.** Every push to `main` runs the `Auto Release` workflow,
+which bumps the patch version from the latest tag and publishes a GitHub Release with
+`rpm`, `deb`, the static binary, and `SHA256SUMS`. Pushing an explicit `v*` tag also
+publishes a release (for deliberate minor/major bumps). Grab the latest from the
+[releases page](https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases).
 
 ## Testing
 
@@ -296,23 +371,29 @@ make test                  # unit tests (go test ./...)
 ## Project structure
 
 ```text
-cmd/ttrack      CLI entry point (rec/play/ls/ls-user/play-user/tail/tree)
-cmd/ttrackd     root collector daemon
-internal/cast   asciinema v2 cast read/write
-internal/record PTY capture for `ttrack rec`
-internal/play   replay
-internal/store  user-local and central storage paths
-internal/audit  root-only audit commands
-internal/daemon ttrackd socket server, fan-out, ingest
+cmd/ttrack         CLI (rec/play/ls/ls-user/play-user/tail/tree/search/export)
+cmd/ttrackd        root collector daemon
+internal/cast      asciinema v2 cast read/write
+internal/crypto    at-rest AES-256-GCM encryption (+ tests)
+internal/record    PTY capture for `ttrack rec`
+internal/play      replay (snapshot-bounded)
+internal/store     storage paths + transparent decrypt
+internal/audit     root-only audit commands
+internal/daemon    ttrackd socket server, live tail fan-out, ingest, key mgmt
 internal/complete  shell completion
 ```
 
 ## Contributing
 
-Issues and pull requests are welcome via the
-[issue tracker](https://github.com/rushikeshsakharleofficial/ttrack-tracker/issues).
-Before opening a PR, run `make fmt`, `make vet`, and `make test`; CI enforces `gofmt`,
-`go vet`, and the test suite. No `CONTRIBUTING.md` exists yet.
+ttrack is **100% open source** and community-driven — contributions of all sizes are
+welcome.
+
+- **Found a bug or want a feature?** [Open an issue](https://github.com/rushikeshsakharleofficial/ttrack-tracker/issues).
+- **Want to contribute code?** Fork, branch, and open a pull request. Run `make fmt`,
+  `make vet`, `make test`, `make build` first — CI enforces all of them.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide (bug reports, PR workflow,
+project layout, tests).
 
 ## License
 
