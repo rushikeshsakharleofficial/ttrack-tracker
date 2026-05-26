@@ -85,7 +85,7 @@ func LsUser(args []string) error {
 func PlayUser(args []string) error {
 	fs := flag.NewFlagSet("play-user", flag.ContinueOnError)
 	speed := fs.Float64("speed", 1.0, "playback speed multiplier")
-	idle := fs.Float64("idle", 2.0, "cap idle gaps to N seconds (0 = no cap)")
+	idle := fs.Float64("idle", 0, "cap idle gaps to N seconds (default 0 = exact original timing)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}

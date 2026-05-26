@@ -133,7 +133,7 @@ With no command, `ttrack rec` records your `$SHELL` interactively until you `exi
 
 `rec` flags: `-o <file>` writes a local file at that path; `-q` (or `TTRACK_QUIET=1`) suppresses the recording banner and saved-path message.
 
-`play` flags: `--speed N` playback multiplier (default `1.0`); `--idle N` caps idle gaps to N seconds (default `2.0`, `0` disables).
+`play` flags: `--speed N` playback multiplier (default `1.0`); `--idle N` caps idle gaps to N seconds — default `0` = **exact original timing** (idle/waits reproduced in full, like a video); set `N`>0 to compress pauses for quick review.
 
 ### Audit commands (root)
 

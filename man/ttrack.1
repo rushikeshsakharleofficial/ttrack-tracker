@@ -1,5 +1,5 @@
 .\" Manpage for ttrack.
-.TH TTRACK 1 "2026-05-26" "ttrack 0.3.3" "User Commands"
+.TH TTRACK 1 "2026-05-26" "ttrack 0.3.4" "User Commands"
 .SH NAME
 ttrack \- record and replay Linux terminal sessions
 .SH SYNOPSIS
@@ -128,12 +128,14 @@ is twice as fast); values below 1 play slower. Must be greater than 0.
 .BI \-\-idle " N"
 Cap idle gaps between events to at most
 .I N
-seconds, so long pauses in the original session do not stall playback.
-Default
-.BR 2.0 .
-Set to
+seconds. Default
 .B 0
-to disable the cap and replay with exact original timing.
+means
+.B exact original timing
+\(em idle/wait periods are reproduced in full, so playback is a faithful
+real-time replay (like a video). Set
+.I N
+> 0 to compress long pauses for quick review.
 .SH AUDIT COMMANDS
 When the
 .B ttrackd
