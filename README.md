@@ -76,11 +76,28 @@ sudo make install   # installs binaries, man page, systemd unit, completion
 
 ## Quick start
 
-```bash
-ttrack rec                         # records $SHELL; type commands, then exit
-ttrack ls                          # list your recordings
-ttrack play <file-from-ls>         # replay it
+Record a session, list it, and replay it:
+
+```text
+$ ttrack rec /bin/bash -c 'echo "hello from ttrack"; uname -sr'
+ttrack: recording to /home/alice/.local/share/ttrack/20260526T145029-1413696.cast — type 'exit' or Ctrl-D to stop
+hello from ttrack
+Linux 5.14.0-611.55.1.el9_7.x86_64
+
+ttrack: session saved to /home/alice/.local/share/ttrack/20260526T145029-1413696.cast
+
+$ ttrack ls
+STATUS   FILE                          STARTED              COMMAND
+SAVED    20260526T145029-1413696.cast  2026-05-26 14:50:29  /bin/bash -c echo "hello from ttrack"; uname -sr
+
+$ ttrack play --speed 100 20260526T145029-1413696.cast
+--- ttrack replay start ---
+hello from ttrack
+Linux 5.14.0-611.55.1.el9_7.x86_64
+--- ttrack replay end ---
 ```
+
+With no command, `ttrack rec` records your `$SHELL` interactively until you `exit`.
 
 ## Commands
 
@@ -116,10 +133,28 @@ to it over `/run/ttrackd.sock` and the recording is written by root to
 `/var/lib/ttrack/<user>/<sessionid>.cast` (`root:root 0600`, dirs `0700`). Normal
 users cannot read other users' — or their own — recordings.
 
+```text
+$ sudo ttrack ls-user
+USER                  SESSIONS
+root                  1
+alice                 7
+
+$ sudo ttrack ls-user alice
+STATUS   SESSION                       STARTED              COMMAND
+SAVED    20260526T145020-1413240.cast  2026-05-26 14:50:19  /bin/bash -c echo deploy-step-1; whoami
+
+$ sudo ttrack tree
+/var/lib/ttrack
+├─ root
+│  └─ 20260526T124229-1909275.cast  [SAVED]  2026-05-26 12:42:29  /bin/bash
+└─ alice
+   └─ 20260526T145020-1413240.cast  [SAVED]  2026-05-26 14:50:19  /bin/bash -c echo deploy-step-1; whoami
+```
+
+Other audit commands:
+
 ```bash
 sudo systemctl status ttrackd        # daemon state
-sudo ttrack ls-user                  # who has recordings
-sudo ttrack tree                     # full users -> sessions tree
 sudo ttrack play-user <sessionid>    # replay any session
 sudo ttrack tail <sessionid>         # watch a live session
 ```
