@@ -1,0 +1,32 @@
+name: ttrack
+arch: amd64
+platform: linux
+version: ${TTRACK_VERSION}
+section: utils
+priority: optional
+maintainer: terminal-session-recorder maintainers <noreply@example.com>
+description: |
+  Record and replay Linux terminal sessions.
+  ttrack runs a shell under a PTY, captures its output to an asciinema v2
+  cast file, and replays it later. Single static binary; no daemon.
+vendor: terminal-session-recorder
+homepage: https://github.com/terminal-session-recorder/ttrack
+license: GPL-2.0
+
+contents:
+  - src: ./bin/ttrack
+    dst: /usr/bin/ttrack
+    file_info:
+      mode: 0755
+  - src: ./man/ttrack.1
+    dst: /usr/share/man/man1/ttrack.1
+    file_info:
+      mode: 0644
+  - src: ./README.md
+    dst: /usr/share/doc/ttrack/README.md
+    file_info:
+      mode: 0644
+  - src: ./LICENSE
+    dst: /usr/share/doc/ttrack/LICENSE
+    file_info:
+      mode: 0644
