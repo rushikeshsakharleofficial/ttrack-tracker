@@ -18,6 +18,7 @@ vet:
 
 install: build
 	install -Dm755 bin/ttrack $(DESTDIR)$(PREFIX)/bin/ttrack
+	install -Dm644 man/ttrack.1 $(DESTDIR)$(PREFIX)/share/man/man1/ttrack.1
 
 clean:
 	rm -rf bin

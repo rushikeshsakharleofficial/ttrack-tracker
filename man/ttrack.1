@@ -1,0 +1,229 @@
+.\" Manpage for ttrack.
+.TH TTRACK 1 "2026-05-26" "ttrack 0.1" "User Commands"
+.SH NAME
+ttrack \- record and replay Linux terminal sessions
+.SH SYNOPSIS
+.B ttrack rec
+.RB [ \-o
+.IR file ]
+.RI [ command
+.RI [ args ...]]
+.br
+.B ttrack play
+.RB [ \-\-speed
+.IR N ]
+.RB [ \-\-idle
+.IR N ]
+.I file
+.br
+.B ttrack ls
+.br
+.B ttrack help
+.SH DESCRIPTION
+.B ttrack
+records an interactive terminal session and replays it later.
+It launches a command (a shell by default) inside a pseudo-terminal
+(PTY), forwards your keystrokes to it, and copies everything the
+program prints to both your screen and a recording file. The recording
+can then be replayed with original timing.
+.PP
+It is a single self-contained binary, comparable to
+.BR script (1)
+or
+.BR asciinema (1),
+and writes the widely supported
+.B asciinema v2
+"cast" format, so recordings also play with
+.B asciinema play
+when that tool is installed.
+.PP
+.B ttrack
+records terminal
+.I output
+only; it does not store your keystrokes. It records only the session
+you explicitly start with
+.BR "ttrack rec" .
+There is no daemon, no system-wide login hook, and no remote storage.
+.SH COMMANDS
+.TP
+.B rec \fR(alias: \fBrecord\fR)
+Record a session. Runs
+.I command
+under a PTY; with no
+.IR command ,
+runs the user's login shell (see
+.BR ENVIRONMENT ).
+Recording stops when the command exits (type
+.B exit
+or press Ctrl-D in a shell). The output file path is printed on exit.
+.TP
+.B play
+Replay a recorded
+.I file
+to the current terminal, reproducing the original inter-event timing.
+.TP
+.B ls \fR(alias: \fBlist\fR)
+List recordings in the store directory, showing file name, start time,
+and the recorded command.
+.TP
+.B help
+Print a short usage summary. Same as
+.BR \-h ", " \-\-help .
+.SH OPTIONS
+.SS rec options
+.TP
+.BI \-o " file"
+Write the recording to
+.IR file .
+By default a file is auto-named in the store directory (see
+.BR FILES ).
+.SS play options
+.TP
+.BI \-\-speed " N"
+Playback speed multiplier. Default
+.BR 1.0 .
+Values above 1 play faster (e.g.
+.B 2.0
+is twice as fast); values below 1 play slower. Must be greater than 0.
+.TP
+.BI \-\-idle " N"
+Cap idle gaps between events to at most
+.I N
+seconds, so long pauses in the original session do not stall playback.
+Default
+.BR 2.0 .
+Set to
+.B 0
+to disable the cap and replay with exact original timing.
+.SH ENVIRONMENT
+.TP
+.B TTRACK_DIR
+Directory where recordings are stored and listed. If unset, defaults to
+.IR ~/.local/share/ttrack .
+.TP
+.B SHELL
+Shell launched by
+.B ttrack rec
+when no
+.I command
+is given. If unset,
+.I /bin/bash
+is used.
+.TP
+.B TERM
+Recorded in the cast header so players can reproduce terminal behavior.
+.SH FILES
+.TP
+.I ~/.local/share/ttrack/
+Default store directory (overridden by
+.BR TTRACK_DIR ).
+.TP
+.I <store>/<YYYYMMDDThhmmss>-<pid>.cast
+Auto-named recording. The timestamp is the session start time; the pid
+is the recorder's process id.
+.SH FILE FORMAT
+Recordings use the asciinema v2 cast format: a UTF-8, JSON-lines text
+file.
+.PP
+The first line is a header object, for example:
+.PP
+.RS
+.EX
+{"version":2,"width":80,"height":24,"timestamp":1779776263,
+ "command":"/bin/bash","env":{"SHELL":"/bin/bash","TERM":"xterm-256color"}}
+.EE
+.RE
+.PP
+Each subsequent line is an event array
+.RB [ "time, \"o\", data" ]
+where
+.I time
+is seconds (float) since session start,
+.B "o"
+marks terminal output, and
+.I data
+is the printed text:
+.PP
+.RS
+.EX
+[0.131000, "o", "hello\\r\\n"]
+.EE
+.RE
+.PP
+Because the format is standard asciinema v2, files are also viewable
+with
+.B asciinema cat
+and playable with
+.BR "asciinema play" .
+.SH EXAMPLES
+.TP
+Record an interactive shell, then replay it:
+.EX
+.B $ ttrack rec
+.B $ ttrack ls
+.B $ ttrack play ~/.local/share/ttrack/20260526T120422-1858012.cast
+.EE
+.TP
+Record a single command:
+.EX
+.B $ ttrack rec /bin/bash -c 'make test'
+.EE
+.TP
+Record to a named file:
+.EX
+.B $ ttrack rec -o /tmp/deploy.cast
+.EE
+.TP
+Replay at double speed:
+.EX
+.B $ ttrack play --speed 2 session.cast
+.EE
+.TP
+Replay with exact original pauses (no idle cap):
+.EX
+.B $ ttrack play --idle 0 session.cast
+.EE
+.TP
+Store recordings in a custom directory:
+.EX
+.B $ TTRACK_DIR=/var/log/sessions ttrack rec
+.B $ TTRACK_DIR=/var/log/sessions ttrack ls
+.EE
+.TP
+Play with the standard asciinema player, if installed:
+.EX
+.B $ asciinema play session.cast
+.EE
+.SH EXIT STATUS
+.TP
+.B 0
+Success. Note:
+.B ttrack rec
+exits 0 once the session is recorded, regardless of the exit status of
+the recorded command.
+.TP
+.B 1
+Runtime error (e.g.
+.B play
+given a missing or malformed file, or the recorder could not start the
+command).
+.TP
+.B 2
+Usage error (unknown subcommand or bad arguments).
+.SH LIMITATIONS
+.IP \(bu 2
+Records terminal output only; keystrokes (input) are not captured.
+.IP \(bu 2
+Records only the session started by
+.BR "ttrack rec" ;
+it does not attach to existing sessions or auto-record logins.
+.IP \(bu 2
+No daemon, PAM integration, access control, or remote storage. Recording
+files are written with the invoking user's permissions.
+.SH SEE ALSO
+.BR script (1),
+.BR scriptreplay (1),
+.BR asciinema (1),
+.BR ttyrec (1)
+.SH AUTHOR
+Part of the terminal-session-recorder project.
