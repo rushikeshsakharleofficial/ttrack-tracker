@@ -31,6 +31,16 @@ ttrack \- record and replay Linux terminal sessions
 .br
 .B ttrack tree
 .br
+.B ttrack search
+.RB [ \-\-from
+.IR T ]
+.RB [ \-\-to
+.IR T ]
+.RB [ \-\-user
+.IR U ]
+.RB [ \-i ]
+.I pattern
+.br
 .B ttrack help
 .SH DESCRIPTION
 .B ttrack
@@ -141,6 +151,22 @@ Live-stream an in-progress session from the daemon as it is recorded.
 .TP
 .B tree
 Print a tree of users and their sessions.
+.TP
+.BI "search " "[\-\-from T] [\-\-to T] [\-\-user U] [\-i] pattern"
+Search all recordings for
+.IR pattern ,
+matching the recorded command and terminal output. Print each matching session
+with a few snippet lines.
+.B \-\-from
+and
+.B \-\-to
+limit to sessions started in a time range
+.RI ( YYYY-MM-DD [
+.IR "HH:MM" "] or RFC3339);"
+.B \-\-user
+limits to one user;
+.B \-i
+is case-insensitive.
 .PP
 When
 .B ttrackd

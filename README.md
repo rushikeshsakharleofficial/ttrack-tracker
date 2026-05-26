@@ -125,6 +125,7 @@ These read the central root-only store and require root:
 | `ttrack play-user [--speed N] <sessionid>` | Replay a session by id, searched across all users. |
 | `ttrack tail <sessionid>` | Live-stream an in-progress session from the daemon. |
 | `ttrack tree` | Print a users → sessions tree. |
+| `ttrack search [--from T] [--to T] [--user U] [-i] <pattern>` | Find a string across all recordings (command + output), optionally within a time range. |
 
 ## Audit mode (central root-only store)
 
@@ -150,6 +151,25 @@ $ sudo ttrack tree
 └─ alice
    └─ 20260526T145020-1413240.cast  [SAVED]  2026-05-26 14:50:19  /bin/bash -c echo deploy-step-1; whoami
 ```
+
+Search recordings for a string (e.g. a command that was run), optionally within a
+time window:
+
+```text
+$ sudo ttrack search nginx
+user=alice  when=2026-05-26 14:59:18  session=20260526T145918-1420180
+    cmd: /bin/bash -c echo starting deploy; systemctl restart nginx; echo deploy done
+    > Failed to restart nginx.service: Unit nginx.service not found.
+
+$ sudo ttrack search --from "2026-05-26 09:00" --to "2026-05-26 18:00" --user alice -i DEPLOY
+user=alice  when=2026-05-26 14:59:18  session=20260526T145918-1420180
+    cmd: /bin/bash -c echo starting deploy; systemctl restart nginx; echo deploy done
+    > starting deploy
+    > deploy done
+```
+
+Each match shows **which user** ran it (`user=`) and **when** the session started
+(`when=`), the recorded command, and matching output lines.
 
 Other audit commands:
 

@@ -10,7 +10,7 @@ _ttrack() {
 
     # Top-level subcommand.
     if [ "$COMP_CWORD" -eq 1 ]; then
-        COMPREPLY=( $(compgen -W "rec play ls ls-user play-user tail tree completion help" -- "$cur") )
+        COMPREPLY=( $(compgen -W "rec play ls ls-user play-user tail tree search completion help" -- "$cur") )
         return
     fi
 
@@ -34,6 +34,8 @@ _ttrack() {
             COMPREPLY=( $(compgen -W "--speed --idle $(ttrack __complete central-sessions 2>/dev/null)" -- "$cur") ) ;;
         tail)
             COMPREPLY=( $(compgen -W "$(ttrack __complete central-sessions 2>/dev/null)" -- "$cur") ) ;;
+        search)
+            COMPREPLY=( $(compgen -W "--from --to --user -i" -- "$cur") ) ;;
         completion)
             COMPREPLY=( $(compgen -W "bash" -- "$cur") ) ;;
         *)

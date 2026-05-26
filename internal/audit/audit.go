@@ -4,13 +4,17 @@
 package audit
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
 	"io"
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
+	"ttrack/internal/cast"
 	"ttrack/internal/play"
 	"ttrack/internal/store"
 )
@@ -139,4 +143,165 @@ func Tail(args []string) error {
 
 func centralPath(user, name string) string {
 	return filepath.Join(store.CentralDir(), user, name)
+}
+
+// Search handles `ttrack search [--from T] [--to T] [--user U] [-i] <pattern>`.
+// It scans the central store for recordings whose output (or recorded command)
+// contains the pattern, optionally limited to sessions started in a time range.
+func Search(args []string) error {
+	fs := flag.NewFlagSet("search", flag.ContinueOnError)
+	from := fs.String("from", "", "only sessions started at/after this time")
+	to := fs.String("to", "", "only sessions started at/before this time")
+	userFilter := fs.String("user", "", "limit to one user")
+	ignore := fs.Bool("i", false, "case-insensitive match")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() < 1 {
+		return fmt.Errorf("usage: ttrack search [--from T] [--to T] [--user U] [-i] <pattern>")
+	}
+	pattern := fs.Arg(0)
+	needle := pattern
+	if *ignore {
+		needle = strings.ToLower(needle)
+	}
+
+	var fromT, toT time.Time
+	var err error
+	if *from != "" {
+		if fromT, err = parseTime(*from); err != nil {
+			return fmt.Errorf("bad --from: %w", err)
+		}
+	}
+	if *to != "" {
+		if toT, err = parseTime(*to); err != nil {
+			return fmt.Errorf("bad --to: %w", err)
+		}
+	}
+
+	users, err := store.Users()
+	if err != nil {
+		return notRoot(err)
+	}
+
+	matched := 0
+	for _, u := range users {
+		if *userFilter != "" && u != *userFilter {
+			continue
+		}
+		names, _ := store.UserSessions(u)
+		for _, name := range names {
+			path := centralPath(u, name)
+			h, herr := store.Header(path)
+			if herr != nil {
+				continue
+			}
+			if h.Timestamp > 0 {
+				st := time.Unix(h.Timestamp, 0)
+				if !fromT.IsZero() && st.Before(fromT) {
+					continue
+				}
+				if !toT.IsZero() && st.After(toT) {
+					continue
+				}
+			}
+			cmdMatch, snips := scanCast(path, needle, *ignore, h)
+			if !cmdMatch && len(snips) == 0 {
+				continue
+			}
+			matched++
+			// Lead with WHO ran it and WHEN, then the command and matches.
+			fmt.Printf("user=%s  when=%s  session=%s\n",
+				u, store.Started(h), strings.TrimSuffix(name, ".cast"))
+			fmt.Printf("    cmd: %s\n", clean(h.Command))
+			for _, s := range snips {
+				fmt.Printf("    > %s\n", s)
+			}
+		}
+	}
+	if matched == 0 {
+		fmt.Printf("no matches for %q\n", pattern)
+	}
+	return nil
+}
+
+// scanCast reports whether the recorded command matched, plus up to a few
+// cleaned output snippet lines containing needle.
+func scanCast(path, needle string, ignore bool, h cast.Header) (cmdMatch bool, snips []string) {
+	const maxSnip = 5
+
+	hay := h.Command
+	if ignore {
+		hay = strings.ToLower(hay)
+	}
+	if needle != "" && strings.Contains(hay, needle) {
+		cmdMatch = true
+	}
+
+	f, err := os.Open(path)
+	if err != nil {
+		return cmdMatch, snips
+	}
+	defer f.Close()
+	r := bufio.NewReader(f)
+	if _, err := cast.ReadHeader(r); err != nil {
+		return cmdMatch, snips
+	}
+	for len(snips) < maxSnip {
+		ev, err := cast.ReadEvent(r)
+		if err != nil {
+			break
+		}
+		if ev.Type != "o" {
+			continue
+		}
+		for _, line := range strings.Split(ev.Data, "\n") {
+			h2 := line
+			if ignore {
+				h2 = strings.ToLower(h2)
+			}
+			if strings.Contains(h2, needle) {
+				if c := clean(line); c != "" {
+					snips = append(snips, c)
+				}
+				if len(snips) >= maxSnip {
+					break
+				}
+			}
+		}
+	}
+	return cmdMatch, snips
+}
+
+// parseTime accepts YYYY-MM-DD[ HH:MM[:SS]] or RFC3339, in local time.
+func parseTime(s string) (time.Time, error) {
+	for _, l := range []string{"2006-01-02 15:04:05", "2006-01-02 15:04", "2006-01-02", time.RFC3339} {
+		if t, err := time.ParseInLocation(l, s, time.Local); err == nil {
+			return t, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("unrecognized time %q (use YYYY-MM-DD[ HH:MM[:SS]] or RFC3339)", s)
+}
+
+// clean strips CR and ANSI/control sequences for readable snippet display.
+func clean(s string) string {
+	var b strings.Builder
+	ansi := false
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c == 0x1b {
+			ansi = true
+			continue
+		}
+		if ansi {
+			if (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') {
+				ansi = false
+			}
+			continue
+		}
+		if c == '\t' || (c >= 0x20 && c < 0x7f) {
+			b.WriteByte(c)
+		}
+	}
+	return strings.TrimSpace(b.String())
 }

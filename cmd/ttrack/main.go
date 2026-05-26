@@ -33,6 +33,8 @@ func main() {
 		err = audit.Tail(os.Args[2:])
 	case "tree":
 		err = audit.Tree(os.Args[2:])
+	case "search":
+		err = audit.Search(os.Args[2:])
 	case "completion":
 		err = complete.Script(os.Args[2:])
 	case "__complete":
@@ -61,13 +63,15 @@ usage:
   ttrack ls                            list your local recordings
 
 audit commands (read the central root-only store; run as root):
-  ttrack ls-user                       list users that have recordings
-  ttrack ls-user <username>            list a user's sessions
+  ttrack ls-user [username]            list users, or one user's sessions
   ttrack play-user [--speed N] <id>    replay a session by id (any user)
   ttrack tail <id>                     live-stream an in-progress session
   ttrack tree                          users -> sessions tree
+  ttrack search [opts] <string>        find a string across recordings
 
   ttrack completion bash               print the bash completion script
+
+search opts: --from / --to <YYYY-MM-DD[ HH:MM]>, --user <name>, -i
 
 local recordings: $TTRACK_DIR or ~/.local/share/ttrack
 central store:    $TTRACK_CENTRAL_DIR or /var/lib/ttrack (root:root 0700)
