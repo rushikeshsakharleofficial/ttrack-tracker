@@ -3,3 +3,6 @@
 *.cast
 *.out
 *.test
+
+# internal harness notes (contains deploy/server details)
+CLAUDE.md
