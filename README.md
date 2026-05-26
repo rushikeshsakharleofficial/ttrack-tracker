@@ -4,8 +4,8 @@
 
 Record and replay Linux terminal sessions as asciinema-compatible casts, with an optional root daemon that collects every user's session into a root-only central store for audit.
 
-[![CI](https://github.com/rushikeshsakharleofficial/terminal-session-recorder/actions/workflows/ci.yml/badge.svg)](https://github.com/rushikeshsakharleofficial/terminal-session-recorder/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/rushikeshsakharleofficial/terminal-session-recorder)](https://github.com/rushikeshsakharleofficial/terminal-session-recorder/releases)
+[![CI](https://github.com/rushikeshsakharleofficial/ttrack-tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/rushikeshsakharleofficial/ttrack-tracker/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/rushikeshsakharleofficial/ttrack-tracker)](https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases)
 [![License: GPL-2.0](https://img.shields.io/badge/license-GPL--2.0-blue.svg)](LICENSE)
 
 </div>
@@ -56,7 +56,7 @@ audit commands (read the central root-only store; run as root):
 
 ### From a released package
 
-Download `rpm`/`deb` from the [latest release](https://github.com/rushikeshsakharleofficial/terminal-session-recorder/releases):
+Download `rpm`/`deb` from the [latest release](https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases):
 
 ```bash
 sudo dnf install ./ttrack-0.2.0-1.x86_64.rpm      # RHEL / Rocky / Fedora
@@ -68,8 +68,8 @@ Packages install `ttrack` to `/usr/bin`, the `ttrackd` daemon to `/usr/libexec`,
 ### From source
 
 ```bash
-git clone https://github.com/rushikeshsakharleofficial/terminal-session-recorder.git
-cd terminal-session-recorder
+git clone https://github.com/rushikeshsakharleofficial/ttrack-tracker.git
+cd ttrack-tracker
 make build          # builds bin/ttrack and bin/ttrackd
 sudo make install   # installs binaries, man page, systemd unit, completion
 ```
@@ -257,7 +257,7 @@ internal/complete  shell completion
 ## Contributing
 
 Issues and pull requests are welcome via the
-[issue tracker](https://github.com/rushikeshsakharleofficial/terminal-session-recorder/issues).
+[issue tracker](https://github.com/rushikeshsakharleofficial/ttrack-tracker/issues).
 Before opening a PR, run `make fmt`, `make vet`, and `make test`; CI enforces `gofmt`,
 `go vet`, and the test suite. No `CONTRIBUTING.md` exists yet.
 

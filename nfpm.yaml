@@ -4,14 +4,14 @@ platform: linux
 version: ${TTRACK_VERSION}
 section: utils
 priority: optional
-maintainer: terminal-session-recorder maintainers <noreply@example.com>
+maintainer: ttrack-tracker maintainers <noreply@example.com>
 description: |
   Record and replay Linux terminal sessions.
   ttrack runs a shell under a PTY and captures its output as asciinema v2
   cast files. The ttrackd root daemon collects sessions from all users into
   a root-only central store (/var/lib/ttrack) for audit, with live tail.
-vendor: terminal-session-recorder
-homepage: https://github.com/terminal-session-recorder/ttrack
+vendor: ttrack-tracker
+homepage: https://github.com/rushikeshsakharleofficial/ttrack-tracker
 license: GPL-2.0
 
 contents:
