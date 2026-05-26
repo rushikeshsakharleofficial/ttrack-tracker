@@ -1,3 +1,0 @@
-# Preserve trackterm-rec session tracking vars across sudo
-# Install to /etc/sudoers.d/trackterm-rec (mode 0440)
-Defaults env_keep += "TRACKTERM_REC_SID TRACKTERM_REC_PARENT TRACKTERM_REC_ACTIVE TRACKTERM_REC_LOGINUID TRACKTERM_REC_SHIM_CHILD"

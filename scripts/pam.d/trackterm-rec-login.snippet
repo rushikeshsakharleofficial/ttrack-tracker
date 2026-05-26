@@ -1,7 +1,0 @@
-# PAM session recording snippet for local console login.
-# Add to /etc/pam.d/login AFTER the pam_loginuid.so line:
-#
-# session    required     pam_loginuid.so
-# session    optional     pam_record.so service=login   ← add this
-
-session    optional     pam_record.so service=login

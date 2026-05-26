@@ -1,8 +1,4 @@
-build/
-release/
-*.o
-*.so
-*.gz
-/terminal-recorder
-tags
-.cache/
+/bin/
+*.cast
+*.out
+*.test
