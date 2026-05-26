@@ -22,6 +22,8 @@ int  trackterm_store_write_output(trackterm_session_store_t *s,
                             const uint8_t *data, uint32_t len);
 int  trackterm_store_write_resize(trackterm_session_store_t *s, double t,
                             uint16_t rows, uint16_t cols);
+int  trackterm_store_write_gap(trackterm_session_store_t *s, double t,
+                            double gap_seconds);
 void trackterm_store_close(trackterm_session_store_t *s, int exit_status);
 
 typedef struct trackterm_client {
@@ -246,6 +248,15 @@ static int handle_frame(trackterm_client_t *c, const struct trackterm_frame *f)
             exit_status = (int)s;
         }
         return -(exit_status + 1000); /* signal caller to close */
+    }
+    case TRACKTERM_F_GAP: {
+        if (!c->got_hello || !c->store) break;
+        double gap = 0.0;
+        if (f->hdr.payload_len >= sizeof(double))
+            memcpy(&gap, f->payload, sizeof(double));
+        trackterm_store_write_gap(c->store, t_sec, gap);
+        TRACKTERM_LOG_INFO("gap recorded for sid=%s gap=%.0fs", c->sid, gap);
+        break;
     }
     case TRACKTERM_F_HEARTBEAT:
         break;

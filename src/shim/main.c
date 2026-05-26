@@ -55,10 +55,16 @@ typedef struct {
     pid_t          child_pid;
     char           sid[37];
     char           parent_sid[37];
+    char           service[64];
+    char           tty[64];
+    char           rhost[64];
+    uint16_t       rows;
+    uint16_t       cols;
     uint32_t       loginuid;
     uint64_t       seq;
     uint64_t       bytes_dropped;
     int            fail_closed;
+    time_t         disconnect_ts;
     struct ringbuf *daemon_buf;
     struct timespec session_start;
 } shim_ctx_t;
@@ -272,14 +278,24 @@ int main(int argc, char *argv[])
         ttyrec_write_event(ctx.local_evt_fd, 0.0, body);
     }
 
+    /* Cache session metadata for reconnect */
+    strncpy(ctx.service, getenv("TRACKTERM_REC_SERVICE") ? getenv("TRACKTERM_REC_SERVICE") :
+                         (getenv("PAM_SERVICE") ? getenv("PAM_SERVICE") : "unknown"),
+            sizeof(ctx.service) - 1);
+    strncpy(ctx.tty,   slave_name ? slave_name : "",         sizeof(ctx.tty)   - 1);
+    strncpy(ctx.rhost, getenv("SSH_CLIENT") ? getenv("SSH_CLIENT") : "",
+            sizeof(ctx.rhost) - 1);
+    ctx.rows = ws.ws_row;
+    ctx.cols = ws.ws_col;
+
     /* Send hello to daemon */
     if (ctx.daemon_fd >= 0) {
         trackterm_session_send_hello(ctx.daemon_fd,
                                ctx.sid, ctx.parent_sid,
                                ctx.loginuid,
-                               getenv("PAM_SERVICE") ? getenv("PAM_SERVICE") : "unknown",
-                               slave_name, ws.ws_row, ws.ws_col,
-                               getenv("SSH_CLIENT"));
+                               ctx.service, ctx.tty,
+                               ctx.rows, ctx.cols,
+                               ctx.rhost);
     }
 
     TRACKTERM_LOG_INFO("trackterm-rec: about to fork");

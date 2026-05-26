@@ -143,6 +143,15 @@ int trackterm_store_write_resize(trackterm_session_store_t *s, double t,
     return ttyrec_write_event(s->events_fd, t, body);
 }
 
+int trackterm_store_write_gap(trackterm_session_store_t *s, double t, double gap_seconds)
+{
+    if (s->events_fd < 0) return -1;
+    char body[128];
+    snprintf(body, sizeof(body),
+             "\"type\":\"gap\",\"gap_seconds\":%.3f", gap_seconds);
+    return ttyrec_write_event(s->events_fd, t, body);
+}
+
 void trackterm_store_close(trackterm_session_store_t *s, int exit_status)
 {
     if (!s) return;

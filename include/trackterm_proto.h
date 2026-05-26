@@ -14,6 +14,7 @@ enum trackterm_frame_type {
     TRACKTERM_F_RESIZE    = 3,
     TRACKTERM_F_CLOSE     = 4,
     TRACKTERM_F_HEARTBEAT = 5,
+    TRACKTERM_F_GAP       = 6,  /* reconnect gap: payload is struct trackterm_gap */
 };
 
 /* All multi-byte fields are little-endian. 28 bytes, no padding. */
@@ -56,6 +57,11 @@ struct trackterm_resize {
 /* TRACKTERM_F_CLOSE payload */
 struct trackterm_close {
     int32_t exit_status;   /* child exit status, LE */
+} __attribute__((packed));
+
+/* TRACKTERM_F_GAP payload: sent on reconnect to record missing interval */
+struct trackterm_gap {
+    double gap_seconds;        /* wall-clock seconds daemon was unreachable */
 } __attribute__((packed));
 
 /* TRACKTERM_F_OUT: raw bytes follow the header — no separate struct */

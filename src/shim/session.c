@@ -187,3 +187,19 @@ int trackterm_session_send_out(int daemon_fd, uint64_t *seq_ptr,
     (void)buf;
     return write_all(daemon_fd, hdr_and_data, (size_t)n);
 }
+
+int trackterm_session_send_gap(int daemon_fd, uint64_t *seq_ptr, double gap_seconds)
+{
+    struct trackterm_gap g;
+    uint8_t buf[sizeof(struct trackterm_frame_hdr) + sizeof(g)];
+    ssize_t n;
+
+    g.gap_seconds = gap_seconds;
+    n = frame_encode(buf, sizeof(buf),
+                     TRACKTERM_F_GAP,
+                     trackterm_clock_ns(), (*seq_ptr)++,
+                     &g, sizeof(g),
+                     0);
+    if (n < 0) return -1;
+    return write_all(daemon_fd, buf, (size_t)n);
+}

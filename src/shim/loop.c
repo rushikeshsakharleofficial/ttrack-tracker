@@ -24,6 +24,13 @@ extern int trackterm_child_status;
 int trackterm_reap_child(pid_t pid);
 
 /* Declared in session.c */
+int trackterm_session_connect_daemon(int fail_closed);
+int trackterm_session_send_hello(int daemon_fd,
+                           const char *sid, const char *parent_sid,
+                           uint32_t loginuid, const char *service,
+                           const char *tty, uint16_t rows, uint16_t cols,
+                           const char *rhost);
+int trackterm_session_send_gap(int daemon_fd, uint64_t *seq_ptr, double gap_seconds);
 int trackterm_session_send_out(int daemon_fd, uint64_t *seq_ptr,
                          const uint8_t *data, uint32_t len);
 int trackterm_session_send_close(int daemon_fd, uint64_t *seq_ptr, int exit_code);
@@ -62,10 +69,16 @@ typedef struct {
     pid_t          child_pid;
     char           sid[37];
     char           parent_sid[37];
+    char           service[64];
+    char           tty[64];
+    char           rhost[64];
+    uint16_t       rows;
+    uint16_t       cols;
     uint32_t       loginuid;
     uint64_t       seq;
     uint64_t       bytes_dropped;
     int            fail_closed;
+    time_t         disconnect_ts;  /* when daemon connection dropped, 0 = connected */
     struct ringbuf *daemon_buf;
     struct timespec session_start;
 } shim_ctx_t;
@@ -177,7 +190,32 @@ int trackterm_shim_loop_run(shim_ctx_t *ctx)
 
         int r = poll(fds, (nfds_t)nfds, 100 /* ms — for signal check */);
         if (r < 0 && errno != EINTR) break;
-        if (r == 0) continue;
+        if (r == 0) {
+            /* Periodic reconnect attempt when daemon was lost */
+            if (ctx->daemon_fd < 0 && ctx->disconnect_ts != 0) {
+                time_t now = time(NULL);
+                if (now - ctx->disconnect_ts >= 5) {
+                    int new_fd = trackterm_session_connect_daemon(0);
+                    if (new_fd >= 0) {
+                        double gap = (double)(now - ctx->disconnect_ts);
+                        trackterm_session_send_hello(new_fd,
+                            ctx->sid, ctx->parent_sid,
+                            ctx->loginuid, ctx->service,
+                            ctx->tty, ctx->rows, ctx->cols, ctx->rhost);
+                        trackterm_session_send_gap(new_fd, &ctx->seq, gap);
+                        ctx->daemon_fd = new_fd;
+                        ctx->disconnect_ts = 0;
+                        fds[2].fd     = new_fd;
+                        fds[2].events = 0;
+                        nfds = 3;
+                        TRACKTERM_LOG_INFO("reconnected to daemon after %.0fs gap", gap);
+                    } else {
+                        ctx->disconnect_ts = now; /* reset timer, retry in 5s */
+                    }
+                }
+            }
+            continue;
+        }
 
         /* stdin → master */
         if (fds[0].revents & POLLIN) {
@@ -211,9 +249,10 @@ int trackterm_shim_loop_run(shim_ctx_t *ctx)
 
         /* Daemon disconnect */
         if (nfds == 3 && (fds[2].revents & (POLLHUP | POLLERR))) {
-            TRACKTERM_LOG_WARN("daemon connection lost — recording paused");
+            TRACKTERM_LOG_WARN("daemon connection lost — recording paused, will retry");
             close(ctx->daemon_fd);
             ctx->daemon_fd = -1;
+            ctx->disconnect_ts = time(NULL);
             nfds = 2;
         }
     }

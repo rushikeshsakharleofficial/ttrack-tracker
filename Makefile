@@ -1,7 +1,8 @@
 CC      := gcc
 CFLAGS  := -std=c11 -D_GNU_SOURCE -Wall -Wextra -Wformat=2 -Wshadow \
            -O2 -g -fstack-protector-strong -fPIC -D_FORTIFY_SOURCE=2
-LDFLAGS := -Wl,-z,relro,-z,now,-z,noexecstack
+CFLAGS  += $(CFLAGS_EXTRA)
+LDFLAGS := -Wl,-z,relro,-z,now,-z,noexecstack $(LDFLAGS_EXTRA)
 
 # Systemd integration (set to 0 to disable)
 HAVE_SYSTEMD ?= 1
