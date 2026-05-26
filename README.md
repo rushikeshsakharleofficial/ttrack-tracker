@@ -30,6 +30,7 @@ Record and replay Linux terminal sessions as asciinema-compatible casts, with an
 - [Shell completion](#shell-completion)
 - [Configuration guide](#configuration-guide)
 - [File format](#file-format)
+- [Troubleshooting](#troubleshooting)
 - [Building and packaging](#building-and-packaging)
 - [Contributing](#contributing)
 - [License](#license)
@@ -59,13 +60,18 @@ usage:
   ttrack ls                            list your local recordings
 
 audit commands (read the central root-only store; run as root):
-  ttrack ls-user                       list users that have recordings
-  ttrack ls-user <username>            list a user's sessions
+  ttrack ls-user [username]            list users, or one user's sessions
   ttrack play-user [--speed N] <id>    replay a session by id (any user)
   ttrack tail <id>                     live-stream an in-progress session
   ttrack tree                          users -> sessions tree
+  ttrack search [opts] <string>        find a string across recordings
+  ttrack export [-o file] <id>         decrypt a session to a plaintext cast
+  ttrack prune                         interactively delete recordings (by user/time)
 
   ttrack completion bash               print the bash completion script
+
+search opts: --from / --to <YYYY-MM-DD[ HH:MM]>, --user <name>, -i
+recordings in the central store are encrypted at rest (opaque to cat/strings)
 ```
 
 ## Requirements
@@ -80,8 +86,8 @@ audit commands (read the central root-only store; run as root):
 Download `rpm`/`deb` from the [latest release](https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases):
 
 ```bash
-sudo dnf install ./ttrack-0.2.0-1.x86_64.rpm      # RHEL / Rocky / Fedora
-sudo apt install ./ttrack_0.2.0_amd64.deb         # Debian / Ubuntu
+sudo dnf install ./ttrack-*.x86_64.rpm      # RHEL / Rocky / Fedora
+sudo apt install ./ttrack_*_amd64.deb       # Debian / Ubuntu
 ```
 
 Packages install `ttrack` to `/usr/bin`, the `ttrackd` daemon to `/usr/libexec`, a systemd unit, the bash completion, and the auto-record login hook. The post-install step creates `/var/lib/ttrack` (root-only) and enables `ttrackd`.
@@ -127,7 +133,7 @@ With no command, `ttrack rec` records your `$SHELL` interactively until you `exi
 | Command | Description |
 |:--------|:------------|
 | `ttrack rec [-q] [-o file] [cmd...]` | Record a session. Runs `$SHELL` (fallback `/bin/bash`) with no command. |
-| `ttrack play [--speed N] [--idle N] <file>` | Replay a local recording with original timing. |
+| `ttrack play [--speed N] [--idle N] <file>` | Replay a recording with original timing. Resolves a path, a local `ls` id, or — run as root — a central-store session id (same as `play-user`). |
 | `ttrack ls` | List your local recordings (`STATUS`, `FILE`, `STARTED`, `COMMAND`). |
 | `ttrack completion bash` | Print the bash completion script. |
 
@@ -164,16 +170,20 @@ root                  1
 alice                 7
 
 $ sudo ttrack ls-user alice
-STATUS   SESSION                       STARTED              COMMAND
-SAVED    20260526T145020-1413240.cast  2026-05-26 14:50:19  /bin/bash -c echo deploy-step-1; whoami
+STATUS   TYPE          SESSION                       STARTED              COMMAND
+SAVED    non-interactive  20260526T145020-1413240.cast  2026-05-26 14:50:19  /bin/bash -c echo deploy-step-1; whoami
 
 $ sudo ttrack tree
 /var/lib/ttrack
 ├─ root
-│  └─ 20260526T124229-1909275.cast  [SAVED]  2026-05-26 12:42:29  /bin/bash
+│  └─ 20260526T124229-1909275.cast  [SAVED interactive]  2026-05-26 12:42:29  /bin/bash
 └─ alice
-   └─ 20260526T145020-1413240.cast  [SAVED]  2026-05-26 14:50:19  /bin/bash -c echo deploy-step-1; whoami
+   └─ 20260526T145020-1413240.cast  [SAVED non-interactive]  2026-05-26 14:50:19  /bin/bash -c echo deploy-step-1; whoami
 ```
+
+The `TYPE` column distinguishes an **interactive** login shell from a
+**non-interactive** command session (`<shell> -c …`, e.g. an `ssh host "cmd"`
+recorded via the `ForceCommand` wrapper). `tree` shows the same as a `[STATUS TYPE]` tag.
 
 Search recordings for a string (e.g. a command that was run), optionally within a
 time window:
@@ -391,6 +401,15 @@ Local (plaintext) recordings are viewable with `asciinema cat` and playable with
 `asciinema play`. Central recordings are encrypted — run `ttrack export` first to
 get an asciinema-compatible plaintext cast.
 
+## Troubleshooting
+
+**Replaying a full-screen app (vim, less, htop) looks fine.** `ttrack play`
+reproduces TUI redraws exactly. During replay it disables terminal echo and drains
+stdin so the terminal's replies to recorded query sequences (color/cursor reports)
+are not printed as garbage or left on the shell prompt. Multibyte/box-drawing
+characters survive even when a PTY read splits a rune across chunks. If an *old*
+recording (made before these fixes) still shows `�` or stray text, re-record it.
+
 ## Building and packaging
 
 ```bash
@@ -449,9 +468,6 @@ Licensed under the GNU General Public License v2.0. See [LICENSE](LICENSE).
 
 ## Maintainer TODOs
 
-- Set the GitHub repository **About** description (Settings) to ≤160 chars, e.g.:
-  `Record and replay Linux terminal sessions; root daemon collects all users into a root-only audit store. Single static Go binary.`
-- Set GitHub repository **Topics** (Settings → Topics), e.g. `linux`, `terminal`, `session-recording`, `asciinema`, `audit`, `cli`, `golang`, `pty`.
 - Add a 1280×640 social preview image (Settings → Social preview): tool name, one-line description, a terminal screenshot.
 - Add a recorded `.cast`/GIF demo asset and embed it in the Demo section.
 - **Back up the encryption key** `/var/lib/ttrack/.ttrack.key` offsite — losing it makes all encrypted recordings permanently unreadable.
