@@ -11,6 +11,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -161,6 +162,165 @@ func Tree(args []string) error {
 		}
 	}
 	return nil
+}
+
+// Prune handles `ttrack prune` — interactively delete recordings from the
+// central store by user and time range. Root only.
+func Prune(args []string) error {
+	fs := flag.NewFlagSet("prune", flag.ContinueOnError)
+	yes := fs.Bool("yes", false, "skip the final confirmation prompt")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	users, err := store.Users()
+	if err != nil {
+		return notRoot(err)
+	}
+	if len(users) == 0 {
+		fmt.Printf("no recordings in %s\n", store.CentralDir())
+		return nil
+	}
+
+	in := bufio.NewReader(os.Stdin)
+
+	// 1. Which user(s)?
+	fmt.Printf("Users with recordings: %s\n", strings.Join(users, ", "))
+	who := ask(in, "Prune which user? [all / <username>]", "all")
+	var scope []string
+	if who == "all" {
+		scope = users
+	} else {
+		ok := false
+		for _, u := range users {
+			if u == who {
+				ok = true
+			}
+		}
+		if !ok {
+			return fmt.Errorf("no such user %q", who)
+		}
+		scope = []string{who}
+	}
+
+	// 2. How much / time range?
+	fmt.Println("What to delete:")
+	fmt.Println("  all              every session for the selected user(s)")
+	fmt.Println("  days N           sessions older than N days")
+	fmt.Println("  range FROM TO    sessions started in [FROM, TO]  (YYYY-MM-DD[ HH:MM])")
+	mode := ask(in, "Selection?", "all")
+
+	var matchFn func(ts int64) bool
+	switch {
+	case mode == "all":
+		matchFn = func(int64) bool { return true }
+	case strings.HasPrefix(mode, "days"):
+		n, e := strconv.Atoi(strings.TrimSpace(strings.TrimPrefix(mode, "days")))
+		if e != nil || n < 0 {
+			return fmt.Errorf("bad 'days' value: %q", mode)
+		}
+		cutoff := time.Now().AddDate(0, 0, -n)
+		matchFn = func(ts int64) bool { return ts > 0 && time.Unix(ts, 0).Before(cutoff) }
+	case strings.HasPrefix(mode, "range"):
+		parts := strings.Fields(mode)
+		if len(parts) < 3 {
+			return fmt.Errorf("usage: range FROM TO")
+		}
+		fromT, e1 := parseTime(parts[1])
+		toT, e2 := parseTime(parts[2])
+		if e1 != nil || e2 != nil {
+			return fmt.Errorf("bad range times")
+		}
+		matchFn = func(ts int64) bool {
+			if ts == 0 {
+				return false
+			}
+			t := time.Unix(ts, 0)
+			return !t.Before(fromT) && !t.After(toT)
+		}
+	default:
+		return fmt.Errorf("unrecognized selection %q", mode)
+	}
+
+	// 3. Collect matches.
+	type target struct {
+		user, name, path string
+		size             int64
+	}
+	var hits []target
+	var total int64
+	for _, u := range scope {
+		names, _ := store.UserSessions(u)
+		for _, n := range names {
+			p := centralPath(u, n)
+			h, _ := store.Header(p)
+			if !matchFn(h.Timestamp) {
+				continue
+			}
+			var sz int64
+			if fi, e := os.Stat(p); e == nil {
+				sz = fi.Size()
+			}
+			hits = append(hits, target{u, n, p, sz})
+			total += sz
+		}
+	}
+	if len(hits) == 0 {
+		fmt.Println("nothing matched — nothing to prune")
+		return nil
+	}
+
+	// 4. Preview + confirm.
+	fmt.Printf("\nWill delete %d session(s), %s total:\n", len(hits), humanSize(total))
+	for i, t := range hits {
+		if i >= 20 {
+			fmt.Printf("  ... and %d more\n", len(hits)-20)
+			break
+		}
+		fmt.Printf("  %s/%s\n", t.user, t.name)
+	}
+	if !*yes {
+		c := ask(in, fmt.Sprintf("Delete these %d session(s)? [yes/NO]", len(hits)), "no")
+		if c != "yes" && c != "y" {
+			fmt.Println("aborted — nothing deleted")
+			return nil
+		}
+	}
+
+	// 5. Delete.
+	deleted := 0
+	for _, t := range hits {
+		if err := os.Remove(t.path); err == nil {
+			deleted++
+		} else {
+			fmt.Fprintf(os.Stderr, "  failed: %s: %v\n", t.path, err)
+		}
+	}
+	fmt.Printf("pruned %d session(s), freed %s\n", deleted, humanSize(total))
+	return nil
+}
+
+func ask(in *bufio.Reader, prompt, def string) string {
+	fmt.Printf("%s ", prompt)
+	line, _ := in.ReadString('\n')
+	line = strings.TrimSpace(line)
+	if line == "" {
+		return def
+	}
+	return line
+}
+
+func humanSize(n int64) string {
+	const u = 1024
+	if n < u {
+		return fmt.Sprintf("%d B", n)
+	}
+	div, exp := int64(u), 0
+	for x := n / u; x >= u; x /= u {
+		div *= u
+		exp++
+	}
+	return fmt.Sprintf("%.1f %ciB", float64(n)/float64(div), "KMGT"[exp])
 }
 
 // Tail handles `ttrack tail <sessionid>` — live stream from the daemon (root).

@@ -148,6 +148,7 @@ These read the central root-only store and require root:
 | `ttrack tree` | Print a users → sessions tree. |
 | `ttrack search [--from T] [--to T] [--user U] [-i] <pattern>` | Find a string across all recordings (command + output), optionally within a time range. |
 | `ttrack export [-o file] <sessionid>` | Decrypt a recording to a plaintext asciinema cast (for offline use / `asciinema play`). |
+| `ttrack prune [--yes]` | Interactively delete recordings by user and time (`all` / `days N` / `range FROM TO`), with preview + confirmation. |
 
 ## Audit mode (central root-only store)
 
@@ -192,6 +193,25 @@ user=alice  when=2026-05-26 14:59:18  session=20260526T145918-1420180
 
 Each match shows **which user** ran it (`user=`) and **when** the session started
 (`when=`), the recorded command, and matching output lines.
+
+Delete old recordings interactively:
+
+```text
+$ sudo ttrack prune
+Users with recordings: alice, root
+Prune which user? [all / <username>] alice
+What to delete:
+  all              every session for the selected user(s)
+  days N           sessions older than N days
+  range FROM TO    sessions started in [FROM, TO]  (YYYY-MM-DD[ HH:MM])
+Selection? days 90
+
+Will delete 4 session(s), 2.1 MiB total:
+  alice/20260101T...cast
+  ...
+Delete these 4 session(s)? [yes/NO] yes
+pruned 4 session(s), freed 2.1 MiB
+```
 
 Other audit commands:
 

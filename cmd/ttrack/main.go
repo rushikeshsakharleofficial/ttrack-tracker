@@ -37,6 +37,8 @@ func main() {
 		err = audit.Search(os.Args[2:])
 	case "export":
 		err = audit.Export(os.Args[2:])
+	case "prune":
+		err = audit.Prune(os.Args[2:])
 	case "completion":
 		err = complete.Script(os.Args[2:])
 	case "__complete":
@@ -71,6 +73,7 @@ audit commands (read the central root-only store; run as root):
   ttrack tree                          users -> sessions tree
   ttrack search [opts] <string>        find a string across recordings
   ttrack export [-o file] <id>         decrypt a session to a plaintext cast
+  ttrack prune                         interactively delete recordings (by user/time)
 
   ttrack completion bash               print the bash completion script
 

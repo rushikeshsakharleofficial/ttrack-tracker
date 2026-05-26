@@ -10,7 +10,7 @@ _ttrack() {
 
     # Top-level subcommand.
     if [ "$COMP_CWORD" -eq 1 ]; then
-        COMPREPLY=( $(compgen -W "rec play ls ls-user play-user tail tree search export completion help" -- "$cur") )
+        COMPREPLY=( $(compgen -W "rec play ls ls-user play-user tail tree search export prune completion help" -- "$cur") )
         return
     fi
 

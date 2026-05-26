@@ -46,6 +46,9 @@ ttrack \- record and replay Linux terminal sessions
 .IR file ]
 .I sessionid
 .br
+.B ttrack prune
+.RB [ \-\-yes ]
+.br
 .B ttrack help
 .SH DESCRIPTION
 .B ttrack
@@ -180,6 +183,14 @@ with
 .BR \-o )
 for offline use or
 .BR "asciinema play" .
+.TP
+.B prune \fR[\fB\-\-yes\fR]
+Interactively delete recordings from the central store. Prompts for the user
+scope (all or one user) and the selection (\fBall\fR, \fBdays\fR N for sessions
+older than N days, or \fBrange\fR FROM TO), previews the matching sessions, and
+asks for confirmation.
+.B \-\-yes
+skips the final confirmation.
 .PP
 Central recordings are encrypted at rest (AES-256-GCM); on disk a
 .I .cast
