@@ -7,8 +7,13 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 	"time"
+
+	"golang.org/x/sys/unix"
+	"golang.org/x/term"
 
 	"ttrack/internal/cast"
 	"ttrack/internal/store"
@@ -61,7 +66,83 @@ func PlayFile(path string, speed, maxIdle float64) error {
 		return err
 	}
 	defer rc.Close()
-	return play(rc, speed, maxIdle)
+
+	// A recorded TUI (vim, etc.) emits terminal queries (OSC color, Device
+	// Attributes). Replaying them makes the real terminal answer on stdin.
+	// With echo on, the line discipline prints those answers as garbage during
+	// replay; leftover bytes then run as shell commands after we exit. Disable
+	// echo/canonical for the duration and drain stdin at the end.
+	restore := beginReplayInput()
+	err = play(rc, speed, maxIdle)
+	drainTerminalInput()
+	if restore != nil {
+		restore()
+	}
+	return err
+}
+
+// beginReplayInput puts stdin in a no-echo, non-canonical mode (keeping signal
+// keys like Ctrl-C working) so terminal query responses aren't echoed to the
+// screen during replay. Returns a restore func, or nil if stdin isn't a tty.
+func beginReplayInput() func() {
+	fd := int(os.Stdin.Fd())
+	if !term.IsTerminal(fd) {
+		return nil
+	}
+	old, err := unix.IoctlGetTermios(fd, unix.TCGETS)
+	if err != nil {
+		return nil
+	}
+	raw := *old
+	raw.Lflag &^= unix.ECHO | unix.ICANON
+	raw.Cc[unix.VMIN] = 0
+	raw.Cc[unix.VTIME] = 0
+	if err := unix.IoctlSetTermios(fd, unix.TCSETS, &raw); err != nil {
+		return nil
+	}
+	restore := func() { _ = unix.IoctlSetTermios(fd, unix.TCSETS, old) }
+	// Restore on Ctrl-C so an aborted replay doesn't leave the shell broken.
+	sigc := make(chan os.Signal, 1)
+	signal.Notify(sigc, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		if _, ok := <-sigc; ok {
+			restore()
+			os.Exit(130)
+		}
+	}()
+	return func() {
+		signal.Stop(sigc)
+		close(sigc)
+		restore()
+	}
+}
+
+// drainTerminalInput discards bytes the terminal sent in reply to query
+// sequences echoed during replay, so they don't leak onto the shell prompt.
+// Assumes stdin is already in non-canonical mode (see beginReplayInput).
+func drainTerminalInput() {
+	fd := int(os.Stdin.Fd())
+	if !term.IsTerminal(fd) {
+		return
+	}
+	if err := unix.SetNonblock(fd, true); err != nil {
+		return
+	}
+	defer func() { _ = unix.SetNonblock(fd, false) }()
+
+	buf := make([]byte, 4096)
+	deadline := time.Now().Add(120 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		n, rerr := unix.Read(fd, buf)
+		if n > 0 {
+			continue // discard
+		}
+		if rerr == unix.EAGAIN || rerr == unix.EWOULDBLOCK {
+			time.Sleep(10 * time.Millisecond)
+			continue
+		}
+		break
+	}
 }
 
 func play(rc io.Reader, speed, maxIdle float64) error {
