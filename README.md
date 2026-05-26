@@ -291,6 +291,15 @@ sudo sshd -t && sudo systemctl reload ssh
 - Caveat: recorded non-interactive commands run under a PTY, so output is
   line-cooked (CR added) and a TTY is present — a few tools behave differently.
 
+Exclude an admin/automation account (skip recording its commands; its interactive
+logins are still recorded by the hook) with a `Match` block instead of the global
+`ForceCommand`:
+
+```text
+Match User *,!adminuser
+    ForceCommand /usr/libexec/ttrack-ssh-wrap
+```
+
 Disable by removing `/etc/ssh/sshd_config.d/zz-ttrack.conf` and reloading sshd.
 
 ## Shell completion

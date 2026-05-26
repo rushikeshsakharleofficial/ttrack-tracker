@@ -10,3 +10,10 @@
 # under a PTY, so their output is line-cooked (CR added) and a TTY is present —
 # a few tools behave differently than with no TTY.
 ForceCommand /usr/libexec/ttrack-ssh-wrap
+
+# To EXCLUDE an admin/automation account (its commands won't be recorded;
+# its interactive logins are still recorded by the profile.d hook), use a
+# Match block instead of the global ForceCommand above:
+#
+#   Match User *,!adminuser
+#       ForceCommand /usr/libexec/ttrack-ssh-wrap
