@@ -175,19 +175,27 @@ func makeRawRestore(fd int) func() {
 	}
 }
 
-// pumpOutput copies PTY output to the local terminal and the recording,
-// flushing each chunk so live tail and the daemon see output promptly.
+// pumpOutput copies PTY output to the local terminal and the recording.
+// It flushes to the recording sink at most every flushInterval (and once at
+// end) rather than on every chunk, so interactive typing stays snappy while
+// live tail still sees output within ~flushInterval.
 func pumpOutput(ptmx *os.File, cw *cast.Writer, start time.Time, wg *sync.WaitGroup) {
 	defer wg.Done()
+	const flushInterval = 100 * time.Millisecond
 	buf := make([]byte, 32*1024)
+	lastFlush := time.Now()
 	for {
 		n, rerr := ptmx.Read(buf)
 		if n > 0 {
 			_, _ = os.Stdout.Write(buf[:n])
 			_ = cw.WriteOutput(time.Since(start).Seconds(), buf[:n])
-			_ = cw.Flush()
+			if time.Since(lastFlush) >= flushInterval {
+				_ = cw.Flush()
+				lastFlush = time.Now()
+			}
 		}
 		if rerr != nil {
+			_ = cw.Flush()
 			return
 		}
 	}

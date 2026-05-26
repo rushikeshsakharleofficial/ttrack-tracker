@@ -1,5 +1,5 @@
 .\" Manpage for ttrack.
-.TH TTRACK 1 "2026-05-26" "ttrack 0.3.1" "User Commands"
+.TH TTRACK 1 "2026-05-26" "ttrack 0.3.2" "User Commands"
 .SH NAME
 ttrack \- record and replay Linux terminal sessions
 .SH SYNOPSIS
@@ -71,10 +71,11 @@ when that tool is installed.
 .B ttrack
 records terminal
 .I output
-only; it does not store your keystrokes. It records only the session
-you explicitly start with
-.BR "ttrack rec" .
-There is no daemon, no system-wide login hook, and no remote storage.
+only; it does not store your keystrokes. With the optional
+.B ttrackd
+daemon and login hook (installed by the packages), sessions from all users are
+collected into a root-only central store for audit (see
+.BR "AUDIT COMMANDS" ).
 .SH COMMANDS
 .TP
 .B rec \fR(alias: \fBrecord\fR)
