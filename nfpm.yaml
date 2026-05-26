@@ -30,3 +30,8 @@ contents:
     dst: /usr/share/doc/ttrack/LICENSE
     file_info:
       mode: 0644
+  - src: ./scripts/profile.d/ttrack-autorec.sh
+    dst: /etc/profile.d/ttrack-autorec.sh
+    type: "config|noreplace"
+    file_info:
+      mode: 0644

@@ -42,6 +42,7 @@ Record a session. Forks `cmd` (or `$SHELL`, falling back to `/bin/bash`) under a
 | Flag | Default | Description |
 |------|---------|-------------|
 | `-o file` | auto-named in store dir | Output file path |
+| `-q` | off | Quiet: suppress the recording banner and saved-path message (also via `TTRACK_QUIET=1`) |
 
 If no `cmd` is given, the user's `$SHELL` is launched interactively.
 

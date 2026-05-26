@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"time"
 
 	"ttrack/internal/cast"
+	"ttrack/internal/store"
 )
 
 // Run replays a session. args is the play subcommand's argv (after "play").
@@ -27,7 +29,15 @@ func Run(args []string) error {
 		return fmt.Errorf("--speed must be > 0")
 	}
 
-	f, err := os.Open(fs.Arg(0))
+	// Resolve the argument: try it as given, then fall back to the store dir
+	// so a bare filename from `ttrack ls` works from any directory.
+	name := fs.Arg(0)
+	f, err := os.Open(name)
+	if err != nil && !filepath.IsAbs(name) {
+		if alt, aerr := os.Open(filepath.Join(store.Dir(), name)); aerr == nil {
+			f, err = alt, nil
+		}
+	}
 	if err != nil {
 		return err
 	}

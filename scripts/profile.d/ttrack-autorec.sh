@@ -45,6 +45,9 @@ unset -f _ttrack_in_ancestry
 # Mark this environment so direct child shells take the fast path above.
 export TTRACK_REC=1
 
+# Silence the recording banner / saved-path message for auto-login recording.
+export TTRACK_QUIET=1
+
 # Record the session. On a normal recorder run, log out afterwards so the
 # whole login is captured as one session. If the recorder fails to start
 # (non-zero exit), fall through to a normal interactive shell — fail-open.

@@ -24,9 +24,11 @@ import (
 func Run(args []string) error {
 	fs := flag.NewFlagSet("rec", flag.ContinueOnError)
 	out := fs.String("o", "", "output file (default: auto-named in store dir)")
+	quietFlag := fs.Bool("q", false, "suppress the recording banner and saved-path message")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
+	quiet := *quietFlag || os.Getenv("TTRACK_QUIET") != ""
 
 	cmdArgs := fs.Args()
 	shell := os.Getenv("SHELL")
@@ -73,8 +75,10 @@ func Run(args []string) error {
 		return err
 	}
 
-	fmt.Fprintf(os.Stderr,
-		"ttrack: recording to %s — type 'exit' or Ctrl-D to stop\r\n", path)
+	if !quiet {
+		fmt.Fprintf(os.Stderr,
+			"ttrack: recording to %s — type 'exit' or Ctrl-D to stop\r\n", path)
+	}
 
 	cmd := exec.Command(cmdArgs[0], cmdArgs[1:]...)
 	ptmx, err := pty.Start(cmd)
@@ -138,7 +142,9 @@ func Run(args []string) error {
 	_ = cw.Flush()
 	restore()
 
-	fmt.Fprintf(os.Stderr, "\r\nttrack: session saved to %s\n", path)
+	if !quiet {
+		fmt.Fprintf(os.Stderr, "\r\nttrack: session saved to %s\n", path)
+	}
 
 	// Surface the child's exit code without treating it as a ttrack error.
 	if ee, ok := waitErr.(*exec.ExitError); ok {
