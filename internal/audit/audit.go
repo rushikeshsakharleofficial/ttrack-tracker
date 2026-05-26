@@ -480,17 +480,22 @@ func centralPath(user, name string) string {
 // contains the pattern, optionally limited to sessions started in a time range.
 func Search(args []string) error {
 	fs := flag.NewFlagSet("search", flag.ContinueOnError)
+	fs.SetOutput(io.Discard) // suppress flag's own usage; we print our own
 	from := fs.String("from", "", "only sessions started at/after this time")
 	to := fs.String("to", "", "only sessions started at/before this time")
 	userFilter := fs.String("user", "", "limit to one user")
 	ignore := fs.Bool("i", false, "case-insensitive match")
+	all := fs.Bool("all", false, "list all sessions (no pattern needed)")
 	if err := fs.Parse(args); err != nil {
-		return err
+		return searchUsage(err)
 	}
-	if fs.NArg() < 1 {
-		return fmt.Errorf("usage: ttrack search [--from T] [--to T] [--user U] [-i] <pattern>")
+	if fs.NArg() < 1 && !*all {
+		return searchUsage(nil)
 	}
-	pattern := fs.Arg(0)
+	pattern := ""
+	if fs.NArg() >= 1 {
+		pattern = fs.Arg(0)
+	}
 	needle := pattern
 	if *ignore {
 		needle = strings.ToLower(needle)
@@ -510,12 +515,45 @@ func Search(args []string) error {
 		if *userFilter != "" && u != *userFilter {
 			continue
 		}
-		matched += searchUser(u, needle, *ignore, fromT, toT)
+		matched += searchUser(u, needle, *ignore, fromT, toT, *all)
 	}
 	if matched == 0 {
-		fmt.Printf("no matches for %q\n", pattern)
+		if *all {
+			fmt.Println("no recordings")
+		} else {
+			fmt.Printf("no matches for %q\n", pattern)
+		}
 	}
 	return nil
+}
+
+func searchUsage(err error) error {
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ttrack search: %v\n\n", err)
+	}
+	fmt.Fprint(os.Stderr, `usage:
+  ttrack search [--from T] [--to T] [--user U] [-i] <pattern>
+  ttrack search --all [--from T] [--to T] [--user U]      list all sessions
+
+flags:
+  --from <time>   only sessions started at/after  (YYYY-MM-DD[ HH:MM] or RFC3339)
+  --to   <time>   only sessions started at/before
+  --user <name>   limit to one user
+  -i              case-insensitive match
+  --all           list every recorded session (no pattern needed)
+
+examples:
+  ttrack search nginx                         find "nginx" in any recording
+  ttrack search -i ERROR                      case-insensitive
+  ttrack search --user alice sudo             alice's sessions containing "sudo"
+  ttrack search --from 2026-05-01 --to 2026-05-20 deploy
+  ttrack search --all                         list all recorded sessions
+  ttrack search --all --user alice            list all of alice's sessions
+`)
+	if err != nil {
+		return err
+	}
+	return fmt.Errorf("missing search pattern")
 }
 
 func parseRange(from, to string) (fromT, toT time.Time, err error) {
@@ -546,7 +584,7 @@ func inWindow(ts int64, fromT, toT time.Time) bool {
 	return true
 }
 
-func searchUser(u, needle string, ignore bool, fromT, toT time.Time) int {
+func searchUser(u, needle string, ignore bool, fromT, toT time.Time, all bool) int {
 	names, _ := store.UserSessions(u)
 	matched := 0
 	for _, name := range names {
@@ -558,9 +596,13 @@ func searchUser(u, needle string, ignore bool, fromT, toT time.Time) int {
 		if !inWindow(h.Timestamp, fromT, toT) {
 			continue
 		}
-		cmdMatch, snips := scanCast(path, needle, ignore, h)
-		if !cmdMatch && len(snips) == 0 {
-			continue
+		var snips []string
+		if !all {
+			cmdMatch, s := scanCast(path, needle, ignore, h)
+			if !cmdMatch && len(s) == 0 {
+				continue
+			}
+			snips = s
 		}
 		matched++
 		fmt.Printf("user=%s  when=%s  session=%s\n",

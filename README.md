@@ -146,7 +146,7 @@ These read the central root-only store and require root:
 | `ttrack play-user [--speed N] <sessionid>` | Replay a session by id, searched across all users. |
 | `ttrack tail <sessionid>` | Live-stream an in-progress session from the daemon. |
 | `ttrack tree` | Print a users → sessions tree. |
-| `ttrack search [--from T] [--to T] [--user U] [-i] <pattern>` | Find a string across all recordings (command + output), optionally within a time range. |
+| `ttrack search [--from T] [--to T] [--user U] [-i] <pattern>` | Find a string across recordings (command + output), with `--from`/`--to`/`--user`/`-i`. `--all` lists every session. |
 | `ttrack export [-o file] <sessionid>` | Decrypt a recording to a plaintext asciinema cast (for offline use / `asciinema play`). |
 | `ttrack prune [--yes]` | Interactively delete recordings by user and time (`all` / `days N` / `range FROM TO`). Shows a storage overview, requires the prune password (set on first use), never deletes active sessions, previews + confirms. |
 

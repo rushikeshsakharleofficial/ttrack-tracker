@@ -1,5 +1,5 @@
 .\" Manpage for ttrack.
-.TH TTRACK 1 "2026-05-26" "ttrack 0.3.2" "User Commands"
+.TH TTRACK 1 "2026-05-26" "ttrack 0.3.3" "User Commands"
 .SH NAME
 ttrack \- record and replay Linux terminal sessions
 .SH SYNOPSIS
@@ -39,7 +39,8 @@ ttrack \- record and replay Linux terminal sessions
 .RB [ \-\-user
 .IR U ]
 .RB [ \-i ]
-.I pattern
+.RB [ \-\-all ]
+.RI [ pattern ]
 .br
 .B ttrack export
 .RB [ \-o
@@ -175,7 +176,9 @@ limit to sessions started in a time range
 .B \-\-user
 limits to one user;
 .B \-i
-is case-insensitive.
+is case-insensitive;
+.B \-\-all
+lists every session (no pattern needed).
 .TP
 .BI "export " "[\-o file] sessionid"
 Decrypt a central recording to a plaintext asciinema v2 cast (stdout, or
