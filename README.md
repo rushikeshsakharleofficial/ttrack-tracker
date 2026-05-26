@@ -1,5 +1,7 @@
 # ttrack
 
+[![CI](https://github.com/rushikeshsakharleofficial/terminal-session-recorder/actions/workflows/ci.yml/badge.svg)](https://github.com/rushikeshsakharleofficial/terminal-session-recorder/actions/workflows/ci.yml)
+
 A minimal Linux terminal session recorder and replayer. `ttrack rec` forks your shell under a PTY, captures all output to an [asciinema v2](https://docs.asciinema.org/manual/asciicast/v2/) cast file, and `ttrack play` replays it later. Think `script(1)` or `asciinema`, packaged as a single self-contained Go binary with no external runtime dependencies.
 
 ## Build
