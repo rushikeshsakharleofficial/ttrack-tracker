@@ -71,11 +71,27 @@ Files are written in **asciinema v2 cast format** (JSON-lines):
 
 Because the format is standard asciinema v2, recordings are also playable with `asciinema play <file>` if asciinema is installed.
 
+## Auto-record on login (optional)
+
+To record every interactive login automatically, install the profile.d hook:
+
+```bash
+sudo install -m644 scripts/profile.d/ttrack-autorec.sh /etc/profile.d/ttrack-autorec.sh
+```
+
+Behavior:
+- Records interactive login shells; logs out cleanly when the recorded shell exits.
+- Skips non-interactive shells, non-TTY sessions (scp/sftp/cron), and `ttrack rec` is left untouched if absent.
+- Nested shells (`sudo su -`, `su -`, subshells) are **not** re-recorded — a `ttrack` ancestor in the process tree is detected and skipped, so a session is captured once.
+- **Fail-open**: if the recorder cannot start, the normal shell continues — login is never blocked.
+
+Disable by removing the file: `sudo rm /etc/profile.d/ttrack-autorec.sh`.
+
 ## Limitations
 
 - Records PTY output only — keystrokes are not captured.
-- Single local session scope: no daemon, no system-wide auto-recording, no PAM integration, and no remote storage.
-- Only the shell launched under `ttrack rec` is recorded, not pre-existing sessions.
+- Single local session scope: no daemon, no PAM integration, no remote storage. Auto-recording on login is available via the optional profile.d hook above.
+- `ttrack rec` records the shell it launches, not pre-existing sessions.
 
 ## License
 
