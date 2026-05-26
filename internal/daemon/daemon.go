@@ -263,6 +263,7 @@ func ensureKey() ([]byte, error) {
 		if len(data) != crypto.KeySize {
 			return nil, fmt.Errorf("key %s has wrong size %d", kp, len(data))
 		}
+		setImmutable(kp) // best-effort; idempotent
 		return data, nil
 	}
 	if !os.IsNotExist(err) {
@@ -281,10 +282,31 @@ func ensureKey() ([]byte, error) {
 		return nil, fmt.Errorf("write key %s: %w", kp, werr)
 	}
 	_ = os.Chmod(kp, 0o600)
+	setImmutable(kp) // protect from rm/vi/sed/>/tee even by root (until chattr -i)
 	fmt.Fprintf(os.Stderr,
 		"ttrackd: created NEW encryption key at %s — BACK IT UP NOW. "+
 			"Losing it makes every recording permanently unreadable.\n", kp)
 	return key, nil
+}
+
+// setImmutable sets the FS immutable flag (chattr +i) on path so it cannot be
+// modified, deleted, or renamed — even by root — until `chattr -i`. Best-effort:
+// silently skips on filesystems that do not support it.
+func setImmutable(path string) {
+	f, err := os.Open(path)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	flags, err := unix.IoctlGetInt(int(f.Fd()), unix.FS_IOC_GETFLAGS)
+	if err != nil {
+		return // e.g. EOPNOTSUPP / ENOTTY on unsupported fs
+	}
+	const fsImmutableFL = 0x00000010 // FS_IMMUTABLE_FL (stable kernel ABI)
+	if flags&fsImmutableFL != 0 {
+		return // already immutable
+	}
+	_ = unix.IoctlSetPointerInt(int(f.Fd()), unix.FS_IOC_SETFLAGS, flags|fsImmutableFL)
 }
 
 // encryptedRecordingsExist reports whether any central cast is already
