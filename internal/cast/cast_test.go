@@ -93,6 +93,52 @@ func TestRoundTrip(t *testing.T) {
 	}
 }
 
+// TestSplitMultibyteRune verifies that a UTF-8 rune split across two writes
+// (as PTY reads can do) survives the round-trip intact rather than being
+// corrupted to U+FFFD. Reproduces the "gibberish in editor replay" bug.
+func TestSplitMultibyteRune(t *testing.T) {
+	var buf bytes.Buffer
+	w, err := NewWriter(&buf, Header{Width: 80, Height: 24})
+	if err != nil {
+		t.Fatalf("NewWriter: %v", err)
+	}
+
+	// "│" (U+2502, box-drawing) is 3 bytes: 0xE2 0x94 0x82. Split after byte 1.
+	full := []byte("ab│cd")
+	idx := bytes.IndexByte(full, 0xE2) + 1 // split mid-rune
+	if err := w.WriteOutput(0.0, full[:idx]); err != nil {
+		t.Fatalf("WriteOutput(part1): %v", err)
+	}
+	if err := w.WriteOutput(0.5, full[idx:]); err != nil {
+		t.Fatalf("WriteOutput(part2): %v", err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	r := bufio.NewReader(bytes.NewReader(buf.Bytes()))
+	if _, err := ReadHeader(r); err != nil {
+		t.Fatalf("ReadHeader: %v", err)
+	}
+	var got string
+	for {
+		ev, err := ReadEvent(r)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("ReadEvent: %v", err)
+		}
+		got += ev.Data
+	}
+	if got != string(full) {
+		t.Errorf("reassembled: got %q, want %q", got, string(full))
+	}
+	if strings.ContainsRune(got, '�') {
+		t.Errorf("output contains U+FFFD replacement char: %q", got)
+	}
+}
+
 // TestReadEventEOF asserts that reading past the last event returns io.EOF.
 func TestReadEventEOF(t *testing.T) {
 	var buf bytes.Buffer

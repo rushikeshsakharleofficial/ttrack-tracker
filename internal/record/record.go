@@ -115,7 +115,7 @@ func Run(args []string) error {
 	signal.Stop(winch)
 	_ = ptmx.Close() // unblock the reader goroutine
 	wg.Wait()
-	_ = cw.Flush()
+	_ = cw.Close()
 	restore()
 
 	if !quiet {
