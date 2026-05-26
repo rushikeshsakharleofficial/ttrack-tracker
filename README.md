@@ -148,7 +148,7 @@ These read the central root-only store and require root:
 | `ttrack tree` | Print a users → sessions tree. |
 | `ttrack search [--from T] [--to T] [--user U] [-i] <pattern>` | Find a string across all recordings (command + output), optionally within a time range. |
 | `ttrack export [-o file] <sessionid>` | Decrypt a recording to a plaintext asciinema cast (for offline use / `asciinema play`). |
-| `ttrack prune [--yes]` | Interactively delete recordings by user and time (`all` / `days N` / `range FROM TO`), with preview + confirmation. |
+| `ttrack prune [--yes]` | Interactively delete recordings by user and time (`all` / `days N` / `range FROM TO`). Shows a storage overview, requires the prune password (set on first use), never deletes active sessions, previews + confirms. |
 
 ## Audit mode (central root-only store)
 

@@ -101,19 +101,23 @@ func ReadEvent(r *bufio.Reader) (Event, error) {
 			}
 			continue
 		}
-		var raw []json.RawMessage
-		if e := json.Unmarshal(trimmed, &raw); e != nil {
-			return Event{}, fmt.Errorf("bad event line: %w", e)
-		}
-		if len(raw) < 3 {
-			return Event{}, fmt.Errorf("short event line: %s", trimmed)
-		}
-		var ev Event
-		if e := json.Unmarshal(raw[0], &ev.Time); e != nil {
-			return Event{}, fmt.Errorf("bad event time: %w", e)
-		}
-		_ = json.Unmarshal(raw[1], &ev.Type)
-		_ = json.Unmarshal(raw[2], &ev.Data)
-		return ev, nil
+		return parseEventLine(trimmed)
 	}
+}
+
+func parseEventLine(b []byte) (Event, error) {
+	var raw []json.RawMessage
+	if e := json.Unmarshal(b, &raw); e != nil {
+		return Event{}, fmt.Errorf("bad event line: %w", e)
+	}
+	if len(raw) < 3 {
+		return Event{}, fmt.Errorf("short event line: %s", b)
+	}
+	var ev Event
+	if e := json.Unmarshal(raw[0], &ev.Time); e != nil {
+		return Event{}, fmt.Errorf("bad event time: %w", e)
+	}
+	_ = json.Unmarshal(raw[1], &ev.Type)
+	_ = json.Unmarshal(raw[2], &ev.Data)
+	return ev, nil
 }

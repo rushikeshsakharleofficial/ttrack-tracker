@@ -28,6 +28,33 @@ func daemonSocket() string {
 	return "/run/ttrackd.sock"
 }
 
+// openSink picks where the recording goes: stream to the root daemon when
+// reachable (central, root-only), else a user-local file (fail-open). An
+// explicit -o always uses a local file at that path.
+func openSink(out string) (io.WriteCloser, string, error) {
+	if out == "" {
+		if conn, derr := net.DialTimeout("unix", daemonSocket(), 1*time.Second); derr == nil {
+			if _, werr := conn.Write([]byte("REC\n")); werr == nil {
+				return conn, "ttrackd (central)", nil
+			}
+			_ = conn.Close()
+		}
+	}
+	path := out
+	if path == "" {
+		p, err := store.NewPath()
+		if err != nil {
+			return nil, "", err
+		}
+		path = p
+	}
+	f, err := os.Create(path)
+	if err != nil {
+		return nil, "", err
+	}
+	return f, path, nil
+}
+
 // Run records a session. args is the rec subcommand's argv (after "rec").
 func Run(args []string) error {
 	fs := flag.NewFlagSet("rec", flag.ContinueOnError)
@@ -47,58 +74,13 @@ func Run(args []string) error {
 		cmdArgs = []string{shell}
 	}
 
-	// Choose the recording sink:
-	//   - explicit -o: always a local file at that path.
-	//   - otherwise: stream to the root daemon if reachable (central, root-only);
-	//     fall back to a user-local file if the daemon is down (fail-open).
-	var sink io.WriteCloser
-	var dest string // human description for the banner
-	if *out == "" {
-		if conn, derr := net.DialTimeout("unix", daemonSocket(), 1*time.Second); derr == nil {
-			if _, werr := conn.Write([]byte("REC\n")); werr == nil {
-				sink = conn
-				dest = "ttrackd (central)"
-			} else {
-				_ = conn.Close()
-			}
-		}
-	}
-	if sink == nil {
-		path := *out
-		if path == "" {
-			p, err := store.NewPath()
-			if err != nil {
-				return err
-			}
-			path = p
-		}
-		f, err := os.Create(path)
-		if err != nil {
-			return err
-		}
-		sink = f
-		dest = path
+	sink, dest, serr := openSink(*out)
+	if serr != nil {
+		return serr
 	}
 	defer sink.Close()
 
-	stdinFd := int(os.Stdin.Fd())
-	width, height := 80, 24
-	if term.IsTerminal(stdinFd) {
-		if w, h, err := term.GetSize(stdinFd); err == nil {
-			width, height = w, h
-		}
-	}
-
-	cw, err := cast.NewWriter(sink, cast.Header{
-		Width:     width,
-		Height:    height,
-		Timestamp: time.Now().Unix(),
-		Command:   strings.Join(cmdArgs, " "),
-		Env: map[string]string{
-			"SHELL": shell,
-			"TERM":  os.Getenv("TERM"),
-		},
-	})
+	cw, err := cast.NewWriter(sink, buildHeader(cmdArgs, shell))
 	if err != nil {
 		return err
 	}
@@ -115,29 +97,8 @@ func Run(args []string) error {
 	}
 	defer func() { _ = ptmx.Close() }()
 
-	// Propagate window-size changes to the PTY.
-	winch := make(chan os.Signal, 1)
-	signal.Notify(winch, syscall.SIGWINCH)
-	go func() {
-		for range winch {
-			_ = pty.InheritSize(os.Stdin, ptmx)
-		}
-	}()
-	winch <- syscall.SIGWINCH // sync initial size
-
-	// Put the local terminal in raw mode so keystrokes pass through.
-	var oldState *term.State
-	if term.IsTerminal(stdinFd) {
-		if st, err := term.MakeRaw(stdinFd); err == nil {
-			oldState = st
-		}
-	}
-	restore := func() {
-		if oldState != nil {
-			_ = term.Restore(stdinFd, oldState)
-			oldState = nil
-		}
-	}
+	winch := watchResize(ptmx)
+	restore := makeRawRestore(int(os.Stdin.Fd()))
 	defer restore()
 
 	start := time.Now()
@@ -148,21 +109,7 @@ func Run(args []string) error {
 
 	// PTY -> local stdout + recording.
 	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		buf := make([]byte, 32*1024)
-		for {
-			n, rerr := ptmx.Read(buf)
-			if n > 0 {
-				_, _ = os.Stdout.Write(buf[:n])
-				_ = cw.WriteOutput(time.Since(start).Seconds(), buf[:n])
-				_ = cw.Flush() // push promptly so live tail / the daemon see output
-			}
-			if rerr != nil {
-				return
-			}
-		}
-	}()
+	go pumpOutput(ptmx, cw, start, &wg)
 
 	waitErr := cmd.Wait()
 	signal.Stop(winch)
@@ -180,4 +127,68 @@ func Run(args []string) error {
 		_ = ee
 	}
 	return nil
+}
+
+// buildHeader builds the cast header, using the current terminal size if available.
+func buildHeader(cmdArgs []string, shell string) cast.Header {
+	width, height := 80, 24
+	if fd := int(os.Stdin.Fd()); term.IsTerminal(fd) {
+		if w, h, err := term.GetSize(fd); err == nil {
+			width, height = w, h
+		}
+	}
+	return cast.Header{
+		Width:     width,
+		Height:    height,
+		Timestamp: time.Now().Unix(),
+		Command:   strings.Join(cmdArgs, " "),
+		Env:       map[string]string{"SHELL": shell, "TERM": os.Getenv("TERM")},
+	}
+}
+
+// watchResize forwards SIGWINCH to the PTY and syncs the initial size.
+func watchResize(ptmx *os.File) chan os.Signal {
+	winch := make(chan os.Signal, 1)
+	signal.Notify(winch, syscall.SIGWINCH)
+	go func() {
+		for range winch {
+			_ = pty.InheritSize(os.Stdin, ptmx)
+		}
+	}()
+	winch <- syscall.SIGWINCH
+	return winch
+}
+
+// makeRawRestore puts the terminal in raw mode and returns a restore func.
+func makeRawRestore(fd int) func() {
+	var oldState *term.State
+	if term.IsTerminal(fd) {
+		if st, err := term.MakeRaw(fd); err == nil {
+			oldState = st
+		}
+	}
+	return func() {
+		if oldState != nil {
+			_ = term.Restore(fd, oldState)
+			oldState = nil
+		}
+	}
+}
+
+// pumpOutput copies PTY output to the local terminal and the recording,
+// flushing each chunk so live tail and the daemon see output promptly.
+func pumpOutput(ptmx *os.File, cw *cast.Writer, start time.Time, wg *sync.WaitGroup) {
+	defer wg.Done()
+	buf := make([]byte, 32*1024)
+	for {
+		n, rerr := ptmx.Read(buf)
+		if n > 0 {
+			_, _ = os.Stdout.Write(buf[:n])
+			_ = cw.WriteOutput(time.Since(start).Seconds(), buf[:n])
+			_ = cw.Flush()
+		}
+		if rerr != nil {
+			return
+		}
+	}
 }

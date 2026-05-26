@@ -5,6 +5,10 @@ package audit
 
 import (
 	"bufio"
+	"crypto/rand"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"io"
@@ -14,6 +18,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/term"
 
 	"ttrack/internal/cast"
 	"ttrack/internal/play"
@@ -141,27 +147,32 @@ func Tree(args []string) error {
 	}
 	fmt.Println(store.CentralDir())
 	for ui, u := range users {
-		ubranch, uindent := "├─", "│  "
-		if ui == len(users)-1 {
-			ubranch, uindent = "└─", "   "
-		}
+		ubranch, uindent := treeBranch(ui == len(users)-1)
 		fmt.Printf("%s %s\n", ubranch, u)
-		sessions, _ := store.UserSessions(u)
-		for si, name := range sessions {
-			sbranch := "├─"
-			if si == len(sessions)-1 {
-				sbranch = "└─"
-			}
-			h, _ := store.Header(centralPath(u, name))
-			status := "SAVED"
-			if store.IsActive(name) {
-				status = "ACTIVE"
-			}
-			fmt.Printf("%s%s %s  [%s]  %s  %s\n",
-				uindent, sbranch, name, status, store.Started(h), h.Command)
-		}
+		printUserSessions(u, uindent)
 	}
 	return nil
+}
+
+func treeBranch(last bool) (mark, indent string) {
+	if last {
+		return "└─", "   "
+	}
+	return "├─", "│  "
+}
+
+func printUserSessions(user, indent string) {
+	sessions, _ := store.UserSessions(user)
+	for si, name := range sessions {
+		sbranch, _ := treeBranch(si == len(sessions)-1)
+		h, _ := store.Header(centralPath(user, name))
+		status := "SAVED"
+		if store.IsActive(name) {
+			status = "ACTIVE"
+		}
+		fmt.Printf("%s%s %s  [%s]  %s  %s\n",
+			indent, sbranch, name, status, store.Started(h), h.Command)
+	}
 }
 
 // Prune handles `ttrack prune` — interactively delete recordings from the
@@ -184,23 +195,16 @@ func Prune(args []string) error {
 
 	in := bufio.NewReader(os.Stdin)
 
+	// 0. Show what's in the store, then require the prune password.
+	printStorageOverview(users)
+	if err := prunePasswordGate(in); err != nil {
+		return err
+	}
+
 	// 1. Which user(s)?
-	fmt.Printf("Users with recordings: %s\n", strings.Join(users, ", "))
-	who := ask(in, "Prune which user? [all / <username>]", "all")
-	var scope []string
-	if who == "all" {
-		scope = users
-	} else {
-		ok := false
-		for _, u := range users {
-			if u == who {
-				ok = true
-			}
-		}
-		if !ok {
-			return fmt.Errorf("no such user %q", who)
-		}
-		scope = []string{who}
+	scope, err := resolveScope(ask(in, "Prune which user? [all / <username>]", "all"), users)
+	if err != nil {
+		return err
 	}
 
 	// 2. How much / time range?
@@ -208,69 +212,30 @@ func Prune(args []string) error {
 	fmt.Println("  all              every session for the selected user(s)")
 	fmt.Println("  days N           sessions older than N days")
 	fmt.Println("  range FROM TO    sessions started in [FROM, TO]  (YYYY-MM-DD[ HH:MM])")
-	mode := ask(in, "Selection?", "all")
-
-	var matchFn func(ts int64) bool
-	switch {
-	case mode == "all":
-		matchFn = func(int64) bool { return true }
-	case strings.HasPrefix(mode, "days"):
-		n, e := strconv.Atoi(strings.TrimSpace(strings.TrimPrefix(mode, "days")))
-		if e != nil || n < 0 {
-			return fmt.Errorf("bad 'days' value: %q", mode)
-		}
-		cutoff := time.Now().AddDate(0, 0, -n)
-		matchFn = func(ts int64) bool { return ts > 0 && time.Unix(ts, 0).Before(cutoff) }
-	case strings.HasPrefix(mode, "range"):
-		parts := strings.Fields(mode)
-		if len(parts) < 3 {
-			return fmt.Errorf("usage: range FROM TO")
-		}
-		fromT, e1 := parseTime(parts[1])
-		toT, e2 := parseTime(parts[2])
-		if e1 != nil || e2 != nil {
-			return fmt.Errorf("bad range times")
-		}
-		matchFn = func(ts int64) bool {
-			if ts == 0 {
-				return false
-			}
-			t := time.Unix(ts, 0)
-			return !t.Before(fromT) && !t.After(toT)
-		}
-	default:
-		return fmt.Errorf("unrecognized selection %q", mode)
+	matchFn, err := pruneFilter(ask(in, "Selection?", "all"))
+	if err != nil {
+		return err
 	}
 
 	// 3. Collect matches.
-	type target struct {
-		user, name, path string
-		size             int64
-	}
-	var hits []target
-	var total int64
-	for _, u := range scope {
-		names, _ := store.UserSessions(u)
-		for _, n := range names {
-			p := centralPath(u, n)
-			h, _ := store.Header(p)
-			if !matchFn(h.Timestamp) {
-				continue
-			}
-			var sz int64
-			if fi, e := os.Stat(p); e == nil {
-				sz = fi.Size()
-			}
-			hits = append(hits, target{u, n, p, sz})
-			total += sz
-		}
-	}
+	hits, total := collectPruneTargets(scope, matchFn)
 	if len(hits) == 0 {
 		fmt.Println("nothing matched — nothing to prune")
 		return nil
 	}
 
-	// 4. Preview + confirm.
+	// 4. Preview + confirm + delete.
+	previewTargets(hits, total)
+	if !*yes && !confirm(in, len(hits)) {
+		fmt.Println("aborted — nothing deleted")
+		return nil
+	}
+	deleted := deleteTargets(hits)
+	fmt.Printf("pruned %d session(s), freed %s\n", deleted, humanSize(total))
+	return nil
+}
+
+func previewTargets(hits []pruneTarget, total int64) {
 	fmt.Printf("\nWill delete %d session(s), %s total:\n", len(hits), humanSize(total))
 	for i, t := range hits {
 		if i >= 20 {
@@ -279,15 +244,14 @@ func Prune(args []string) error {
 		}
 		fmt.Printf("  %s/%s\n", t.user, t.name)
 	}
-	if !*yes {
-		c := ask(in, fmt.Sprintf("Delete these %d session(s)? [yes/NO]", len(hits)), "no")
-		if c != "yes" && c != "y" {
-			fmt.Println("aborted — nothing deleted")
-			return nil
-		}
-	}
+}
 
-	// 5. Delete.
+func confirm(in *bufio.Reader, n int) bool {
+	c := ask(in, fmt.Sprintf("Delete these %d session(s)? [yes/NO]", n), "no")
+	return c == "yes" || c == "y"
+}
+
+func deleteTargets(hits []pruneTarget) int {
 	deleted := 0
 	for _, t := range hits {
 		if err := os.Remove(t.path); err == nil {
@@ -296,8 +260,175 @@ func Prune(args []string) error {
 			fmt.Fprintf(os.Stderr, "  failed: %s: %v\n", t.path, err)
 		}
 	}
-	fmt.Printf("pruned %d session(s), freed %s\n", deleted, humanSize(total))
+	return deleted
+}
+
+type pruneTarget struct {
+	user, name, path string
+	size             int64
+}
+
+func resolveScope(who string, users []string) ([]string, error) {
+	if who == "all" {
+		return users, nil
+	}
+	for _, u := range users {
+		if u == who {
+			return []string{who}, nil
+		}
+	}
+	return nil, fmt.Errorf("no such user %q", who)
+}
+
+func pruneFilter(mode string) (func(ts int64) bool, error) {
+	switch {
+	case mode == "all":
+		return func(int64) bool { return true }, nil
+	case strings.HasPrefix(mode, "days"):
+		n, e := strconv.Atoi(strings.TrimSpace(strings.TrimPrefix(mode, "days")))
+		if e != nil || n < 0 {
+			return nil, fmt.Errorf("bad 'days' value: %q", mode)
+		}
+		cutoff := time.Now().AddDate(0, 0, -n)
+		return func(ts int64) bool { return ts > 0 && time.Unix(ts, 0).Before(cutoff) }, nil
+	case strings.HasPrefix(mode, "range"):
+		parts := strings.Fields(mode)
+		if len(parts) < 3 {
+			return nil, fmt.Errorf("usage: range FROM TO")
+		}
+		fromT, e1 := parseTime(parts[1])
+		toT, e2 := parseTime(parts[2])
+		if e1 != nil || e2 != nil {
+			return nil, fmt.Errorf("bad range times")
+		}
+		return func(ts int64) bool {
+			if ts == 0 {
+				return false
+			}
+			t := time.Unix(ts, 0)
+			return !t.Before(fromT) && !t.After(toT)
+		}, nil
+	default:
+		return nil, fmt.Errorf("unrecognized selection %q", mode)
+	}
+}
+
+func collectPruneTargets(scope []string, match func(int64) bool) ([]pruneTarget, int64) {
+	var hits []pruneTarget
+	var total int64
+	for _, u := range scope {
+		names, _ := store.UserSessions(u)
+		for _, n := range names {
+			if store.IsActive(n) {
+				continue // never prune an in-progress recording
+			}
+			p := centralPath(u, n)
+			h, _ := store.Header(p)
+			if !match(h.Timestamp) {
+				continue
+			}
+			var sz int64
+			if fi, e := os.Stat(p); e == nil {
+				sz = fi.Size()
+			}
+			hits = append(hits, pruneTarget{u, n, p, sz})
+			total += sz
+		}
+	}
+	return hits, total
+}
+
+func printStorageOverview(users []string) {
+	fmt.Printf("Central store: %s\n", store.CentralDir())
+	fmt.Printf("  %-20s %9s %10s\n", "USER", "SESSIONS", "SIZE")
+	var grandSize int64
+	var grandN int
+	for _, u := range users {
+		names, _ := store.UserSessions(u)
+		var sz int64
+		for _, n := range names {
+			if fi, e := os.Stat(centralPath(u, n)); e == nil {
+				sz += fi.Size()
+			}
+		}
+		grandSize += sz
+		grandN += len(names)
+		fmt.Printf("  %-20s %9d %10s\n", u, len(names), humanSize(sz))
+	}
+	fmt.Printf("  %-20s %9d %10s\n\n", "TOTAL", grandN, humanSize(grandSize))
+}
+
+func pruneHashPath() string { return filepath.Join(store.CentralDir(), ".prune.hash") }
+
+// prunePasswordGate requires the prune password. On first use (no password set
+// yet, e.g. just after install) it prompts to create one.
+func prunePasswordGate(in *bufio.Reader) error {
+	data, err := os.ReadFile(pruneHashPath())
+	if os.IsNotExist(err) {
+		fmt.Println("No prune password set yet — create one now (required to prune).")
+		return setPrunePassword(in)
+	}
+	if err != nil {
+		return err
+	}
+	if !verifyPassword(string(data), readPassword(in, "Prune password: ")) {
+		return fmt.Errorf("incorrect prune password")
+	}
 	return nil
+}
+
+func setPrunePassword(in *bufio.Reader) error {
+	p1 := readPassword(in, "New prune password: ")
+	if len(p1) < 4 {
+		return fmt.Errorf("password too short (min 4 chars)")
+	}
+	if readPassword(in, "Confirm password: ") != p1 {
+		return fmt.Errorf("passwords do not match")
+	}
+	rec, err := hashPassword(p1)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(pruneHashPath(), []byte(rec), 0o600); err != nil {
+		return err
+	}
+	fmt.Println("prune password set.")
+	return nil
+}
+
+func hashPassword(pw string) (string, error) {
+	salt := make([]byte, 16)
+	if _, err := rand.Read(salt); err != nil {
+		return "", err
+	}
+	h := sha256.Sum256(append(salt, []byte(pw)...))
+	return hex.EncodeToString(salt) + "$" + hex.EncodeToString(h[:]), nil
+}
+
+func verifyPassword(rec, pw string) bool {
+	parts := strings.SplitN(strings.TrimSpace(rec), "$", 2)
+	if len(parts) != 2 {
+		return false
+	}
+	salt, err := hex.DecodeString(parts[0])
+	if err != nil {
+		return false
+	}
+	h := sha256.Sum256(append(salt, []byte(pw)...))
+	return subtle.ConstantTimeCompare([]byte(hex.EncodeToString(h[:])), []byte(parts[1])) == 1
+}
+
+func readPassword(in *bufio.Reader, prompt string) string {
+	fmt.Print(prompt)
+	fd := int(os.Stdin.Fd())
+	if term.IsTerminal(fd) {
+		if b, err := term.ReadPassword(fd); err == nil {
+			fmt.Println()
+			return strings.TrimSpace(string(b))
+		}
+	}
+	line, _ := in.ReadString('\n')
+	return strings.TrimSpace(line)
 }
 
 func ask(in *bufio.Reader, prompt, def string) string {
@@ -365,19 +496,10 @@ func Search(args []string) error {
 		needle = strings.ToLower(needle)
 	}
 
-	var fromT, toT time.Time
-	var err error
-	if *from != "" {
-		if fromT, err = parseTime(*from); err != nil {
-			return fmt.Errorf("bad --from: %w", err)
-		}
+	fromT, toT, err := parseRange(*from, *to)
+	if err != nil {
+		return err
 	}
-	if *to != "" {
-		if toT, err = parseTime(*to); err != nil {
-			return fmt.Errorf("bad --to: %w", err)
-		}
-	}
-
 	users, err := store.Users()
 	if err != nil {
 		return notRoot(err)
@@ -388,35 +510,7 @@ func Search(args []string) error {
 		if *userFilter != "" && u != *userFilter {
 			continue
 		}
-		names, _ := store.UserSessions(u)
-		for _, name := range names {
-			path := centralPath(u, name)
-			h, herr := store.Header(path)
-			if herr != nil {
-				continue
-			}
-			if h.Timestamp > 0 {
-				st := time.Unix(h.Timestamp, 0)
-				if !fromT.IsZero() && st.Before(fromT) {
-					continue
-				}
-				if !toT.IsZero() && st.After(toT) {
-					continue
-				}
-			}
-			cmdMatch, snips := scanCast(path, needle, *ignore, h)
-			if !cmdMatch && len(snips) == 0 {
-				continue
-			}
-			matched++
-			// Lead with WHO ran it and WHEN, then the command and matches.
-			fmt.Printf("user=%s  when=%s  session=%s\n",
-				u, store.Started(h), strings.TrimSuffix(name, ".cast"))
-			fmt.Printf("    cmd: %s\n", clean(h.Command))
-			for _, s := range snips {
-				fmt.Printf("    > %s\n", s)
-			}
-		}
+		matched += searchUser(u, needle, *ignore, fromT, toT)
 	}
 	if matched == 0 {
 		fmt.Printf("no matches for %q\n", pattern)
@@ -424,52 +518,114 @@ func Search(args []string) error {
 	return nil
 }
 
+func parseRange(from, to string) (fromT, toT time.Time, err error) {
+	if from != "" {
+		if fromT, err = parseTime(from); err != nil {
+			return fromT, toT, fmt.Errorf("bad --from: %w", err)
+		}
+	}
+	if to != "" {
+		if toT, err = parseTime(to); err != nil {
+			return fromT, toT, fmt.Errorf("bad --to: %w", err)
+		}
+	}
+	return fromT, toT, nil
+}
+
+func inWindow(ts int64, fromT, toT time.Time) bool {
+	if ts <= 0 {
+		return true
+	}
+	st := time.Unix(ts, 0)
+	if !fromT.IsZero() && st.Before(fromT) {
+		return false
+	}
+	if !toT.IsZero() && st.After(toT) {
+		return false
+	}
+	return true
+}
+
+func searchUser(u, needle string, ignore bool, fromT, toT time.Time) int {
+	names, _ := store.UserSessions(u)
+	matched := 0
+	for _, name := range names {
+		path := centralPath(u, name)
+		h, herr := store.Header(path)
+		if herr != nil {
+			continue
+		}
+		if !inWindow(h.Timestamp, fromT, toT) {
+			continue
+		}
+		cmdMatch, snips := scanCast(path, needle, ignore, h)
+		if !cmdMatch && len(snips) == 0 {
+			continue
+		}
+		matched++
+		fmt.Printf("user=%s  when=%s  session=%s\n",
+			u, store.Started(h), strings.TrimSuffix(name, ".cast"))
+		fmt.Printf("    cmd: %s\n", clean(h.Command))
+		for _, s := range snips {
+			fmt.Printf("    > %s\n", s)
+		}
+	}
+	return matched
+}
+
 // scanCast reports whether the recorded command matched, plus up to a few
 // cleaned output snippet lines containing needle.
 func scanCast(path, needle string, ignore bool, h cast.Header) (cmdMatch bool, snips []string) {
-	const maxSnip = 5
-
 	hay := h.Command
 	if ignore {
 		hay = strings.ToLower(hay)
 	}
-	if needle != "" && strings.Contains(hay, needle) {
-		cmdMatch = true
-	}
+	cmdMatch = needle != "" && strings.Contains(hay, needle)
 
 	rc, err := store.OpenCast(path)
 	if err != nil {
-		return cmdMatch, snips
+		return cmdMatch, nil
 	}
 	defer rc.Close()
 	r := bufio.NewReader(rc)
 	if _, err := cast.ReadHeader(r); err != nil {
-		return cmdMatch, snips
+		return cmdMatch, nil
 	}
+	return cmdMatch, scanOutput(r, needle, ignore)
+}
+
+func scanOutput(r *bufio.Reader, needle string, ignore bool) []string {
+	const maxSnip = 5
+	var snips []string
 	for len(snips) < maxSnip {
 		ev, err := cast.ReadEvent(r)
 		if err != nil {
 			break
 		}
-		if ev.Type != "o" {
-			continue
-		}
-		for _, line := range strings.Split(ev.Data, "\n") {
-			h2 := line
-			if ignore {
-				h2 = strings.ToLower(h2)
-			}
-			if strings.Contains(h2, needle) {
-				if c := clean(line); c != "" {
-					snips = append(snips, c)
-				}
-				if len(snips) >= maxSnip {
-					break
-				}
-			}
+		if ev.Type == "o" {
+			snips = appendMatches(snips, ev.Data, needle, ignore, maxSnip)
 		}
 	}
-	return cmdMatch, snips
+	return snips
+}
+
+func appendMatches(snips []string, data, needle string, ignore bool, max int) []string {
+	for _, line := range strings.Split(data, "\n") {
+		h := line
+		if ignore {
+			h = strings.ToLower(h)
+		}
+		if !strings.Contains(h, needle) {
+			continue
+		}
+		if c := clean(line); c != "" {
+			snips = append(snips, c)
+		}
+		if len(snips) >= max {
+			break
+		}
+	}
+	return snips
 }
 
 // parseTime accepts YYYY-MM-DD[ HH:MM[:SS]] or RFC3339, in local time.

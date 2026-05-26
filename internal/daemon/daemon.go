@@ -339,6 +339,12 @@ func encryptedRecordingsExist() bool {
 // store on startup, encrypting them so sessions recorded while the daemon was
 // down become root-only. Source files are removed after a successful copy.
 func ingestLocalRecordings(key []byte) {
+	for _, home := range homeDirs() {
+		ingestHome(home, key)
+	}
+}
+
+func homeDirs() []string {
 	homes := []string{"/root"}
 	if entries, err := os.ReadDir("/home"); err == nil {
 		for _, e := range entries {
@@ -347,29 +353,27 @@ func ingestLocalRecordings(key []byte) {
 			}
 		}
 	}
-	for _, home := range homes {
-		uname := filepath.Base(home)
-		src := filepath.Join(home, ".local", "share", "ttrack")
-		entries, err := os.ReadDir(src)
-		if err != nil {
+	return homes
+}
+
+func ingestHome(home string, key []byte) {
+	uname := filepath.Base(home)
+	src := filepath.Join(home, ".local", "share", "ttrack")
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return
+	}
+	dstDir := filepath.Join(store.CentralDir(), uname)
+	for _, e := range entries {
+		if e.IsDir() || filepath.Ext(e.Name()) != ".cast" || store.IsActive(e.Name()) {
 			continue
 		}
-		dstDir := filepath.Join(store.CentralDir(), uname)
-		for _, e := range entries {
-			if e.IsDir() || filepath.Ext(e.Name()) != ".cast" {
-				continue
-			}
-			if store.IsActive(e.Name()) {
-				continue // still being written; leave it
-			}
-			if err := os.MkdirAll(dstDir, 0o700); err != nil {
-				continue
-			}
-			sp := filepath.Join(src, e.Name())
-			dp := filepath.Join(dstDir, e.Name())
-			if copyFile(sp, dp, key) == nil {
-				_ = os.Remove(sp)
-			}
+		if err := os.MkdirAll(dstDir, 0o700); err != nil {
+			continue
+		}
+		sp := filepath.Join(src, e.Name())
+		if copyFile(sp, filepath.Join(dstDir, e.Name()), key) == nil {
+			_ = os.Remove(sp)
 		}
 	}
 }
