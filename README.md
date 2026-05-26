@@ -274,6 +274,25 @@ absent, and skips nested shells (`sudo su -`, `su -`, subshells) by detecting a
 `ttrack` process in the ancestry — a session is recorded once. It is fail-open: if the
 recorder cannot start, a normal shell continues. Remove the file to disable.
 
+## Record non-interactive SSH (optional)
+
+The login hook records interactive sessions only. To also record **non-interactive**
+SSH commands (`ssh host "cmd"`), enable the sshd `ForceCommand` wrapper:
+
+```bash
+sudo cp /usr/share/doc/ttrack/sshd-forcecommand.conf.example \
+        /etc/ssh/sshd_config.d/zz-ttrack.conf
+sudo sshd -t && sudo systemctl reload ssh
+```
+
+- `scp` / `sftp` / `rsync` / git transfers pass through untouched.
+- Interactive logins keep recording via the profile.d hook (no double-wrap).
+- Fail-open: if anything is off, the command runs normally — SSH is never blocked.
+- Caveat: recorded non-interactive commands run under a PTY, so output is
+  line-cooked (CR added) and a TTY is present — a few tools behave differently.
+
+Disable by removing `/etc/ssh/sshd_config.d/zz-ttrack.conf` and reloading sshd.
+
 ## Shell completion
 
 Bash completion is installed by the package to

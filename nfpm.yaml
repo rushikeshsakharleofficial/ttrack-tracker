@@ -55,6 +55,14 @@ contents:
     type: "config|noreplace"
     file_info:
       mode: 0644
+  - src: ./scripts/ttrack-ssh-wrap.sh
+    dst: /usr/libexec/ttrack-ssh-wrap
+    file_info:
+      mode: 0755
+  - src: ./scripts/sshd-forcecommand.conf.example
+    dst: /usr/share/doc/ttrack/sshd-forcecommand.conf.example
+    file_info:
+      mode: 0644
 
 scripts:
   postinstall: ./packaging/postinstall.sh

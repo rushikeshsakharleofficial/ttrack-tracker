@@ -1,7 +1,7 @@
 .PHONY: all build test fmt vet install clean rpm deb packages
 
 PREFIX ?= /usr/local
-VERSION ?= 0.3.4
+VERSION ?= 0.3.5
 NFPM ?= $(shell go env GOPATH)/bin/nfpm
 
 all: build
@@ -25,6 +25,8 @@ install: build
 	install -Dm644 man/ttrack.1 $(DESTDIR)$(PREFIX)/share/man/man1/ttrack.1
 	install -Dm644 scripts/systemd/ttrackd.service $(DESTDIR)/lib/systemd/system/ttrackd.service
 	install -Dm644 internal/complete/ttrack.bash $(DESTDIR)$(PREFIX)/share/bash-completion/completions/ttrack
+	install -Dm755 scripts/ttrack-ssh-wrap.sh $(DESTDIR)/usr/libexec/ttrack-ssh-wrap
+	install -Dm644 scripts/sshd-forcecommand.conf.example $(DESTDIR)$(PREFIX)/share/doc/ttrack/sshd-forcecommand.conf.example
 	install -dm700 $(DESTDIR)/var/lib/ttrack
 
 packages: rpm deb
