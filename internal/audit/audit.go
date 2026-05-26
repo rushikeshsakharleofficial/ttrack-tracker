@@ -68,15 +68,15 @@ func LsUser(args []string) error {
 		fmt.Printf("no sessions for user %q\n", user)
 		return nil
 	}
-	fmt.Printf("%-7s  %-26s  %-19s  %s\n", "STATUS", "SESSION", "STARTED", "COMMAND")
+	fmt.Printf("%-7s  %-12s  %-26s  %-19s  %s\n", "STATUS", "TYPE", "SESSION", "STARTED", "COMMAND")
 	for _, name := range sessions {
 		h, _ := store.Header(centralPath(user, name))
 		status := "SAVED"
 		if store.IsActive(name) {
 			status = "ACTIVE"
 		}
-		fmt.Printf("%-7s  %-26s  %-19s  %s\n",
-			status, name, store.Started(h), h.Command)
+		fmt.Printf("%-7s  %-12s  %-26s  %-19s  %s\n",
+			status, sessionKind(h.Command), name, store.Started(h), h.Command)
 	}
 	return nil
 }
@@ -170,9 +170,18 @@ func printUserSessions(user, indent string) {
 		if store.IsActive(name) {
 			status = "ACTIVE"
 		}
-		fmt.Printf("%s%s %s  [%s]  %s  %s\n",
-			indent, sbranch, name, status, store.Started(h), h.Command)
+		fmt.Printf("%s%s %s  [%s %s]  %s  %s\n",
+			indent, sbranch, name, status, sessionKind(h.Command), store.Started(h), h.Command)
 	}
+}
+
+// sessionKind classifies a recording by its command: a bare shell is an
+// interactive login; "<shell> -c ..." is a non-interactive command session.
+func sessionKind(command string) string {
+	if strings.Contains(command, " -c ") {
+		return "non-interactive"
+	}
+	return "interactive"
 }
 
 // Prune handles `ttrack prune` — interactively delete recordings from the

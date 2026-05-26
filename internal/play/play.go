@@ -36,6 +36,8 @@ func Run(args []string) error {
 	if _, statErr := os.Stat(path); statErr != nil && !filepath.IsAbs(name) {
 		if alt := filepath.Join(store.Dir(), name); fileExists(alt) {
 			path = alt
+		} else if cp, _, err := store.FindCentral(name); err == nil {
+			path = cp
 		}
 	}
 	return PlayFile(path, *speed, *maxIdle)
