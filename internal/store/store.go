@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
+	"strings"
 	"time"
 
 	"ttrack/internal/cast"
@@ -58,16 +60,39 @@ func List(args []string) error {
 		return nil
 	}
 
-	fmt.Printf("%-26s  %-19s  %s\n", "FILE", "STARTED", "COMMAND")
+	fmt.Printf("%-7s  %-26s  %-19s  %s\n", "STATUS", "FILE", "STARTED", "COMMAND")
 	for _, name := range files {
 		h, _ := readHeader(filepath.Join(d, name))
 		started := "?"
 		if h.Timestamp > 0 {
 			started = time.Unix(h.Timestamp, 0).Format("2006-01-02 15:04:05")
 		}
-		fmt.Printf("%-26s  %-19s  %s\n", name, started, h.Command)
+		status := "SAVED"
+		if isActive(name) {
+			status = "ACTIVE"
+		}
+		fmt.Printf("%-7s  %-26s  %-19s  %s\n", status, name, started, h.Command)
 	}
 	return nil
+}
+
+// isActive reports whether the recorder that created an auto-named file
+// (<timestamp>-<pid>.cast) is still running. Linux-specific via /proc.
+func isActive(name string) bool {
+	base := strings.TrimSuffix(name, ".cast")
+	i := strings.LastIndex(base, "-")
+	if i < 0 {
+		return false
+	}
+	pid, err := strconv.Atoi(base[i+1:])
+	if err != nil {
+		return false
+	}
+	comm, err := os.ReadFile(fmt.Sprintf("/proc/%d/comm", pid))
+	if err != nil {
+		return false
+	}
+	return strings.TrimSpace(string(comm)) == "ttrack"
 }
 
 func readHeader(path string) (cast.Header, error) {

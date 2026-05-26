@@ -73,6 +73,9 @@ func Run(args []string) error {
 		return err
 	}
 
+	fmt.Fprintf(os.Stderr,
+		"ttrack: recording to %s — type 'exit' or Ctrl-D to stop\r\n", path)
+
 	cmd := exec.Command(cmdArgs[0], cmdArgs[1:]...)
 	ptmx, err := pty.Start(cmd)
 	if err != nil {

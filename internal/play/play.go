@@ -38,6 +38,9 @@ func Run(args []string) error {
 		return err
 	}
 
+	fmt.Fprintln(os.Stderr, "--- ttrack replay start ---")
+	defer fmt.Fprintln(os.Stderr, "\r\n--- ttrack replay end ---")
+
 	var last float64
 	for {
 		ev, err := cast.ReadEvent(r)

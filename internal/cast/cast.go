@@ -46,6 +46,11 @@ func NewWriter(w io.Writer, h Header) (*Writer, error) {
 	if err := json.NewEncoder(bw).Encode(h); err != nil {
 		return nil, err
 	}
+	// Flush the header to disk immediately so an in-progress recording is
+	// readable by `ttrack ls` before the session ends.
+	if err := bw.Flush(); err != nil {
+		return nil, err
+	}
 	return &Writer{w: bw}, nil
 }
 
