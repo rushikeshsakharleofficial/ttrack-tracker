@@ -42,7 +42,23 @@ func Run(args []string) error {
 		return err
 	}
 	defer f.Close()
+	return play(f, *speed, *maxIdle)
+}
 
+// PlayFile replays the cast at path with the given speed and idle cap.
+func PlayFile(path string, speed, maxIdle float64) error {
+	if speed <= 0 {
+		speed = 1.0
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return play(f, speed, maxIdle)
+}
+
+func play(f *os.File, speed, maxIdle float64) error {
 	r := bufio.NewReader(f)
 	if _, err := cast.ReadHeader(r); err != nil {
 		return err
@@ -63,11 +79,11 @@ func Run(args []string) error {
 
 		gap := ev.Time - last
 		last = ev.Time
-		if *maxIdle > 0 && gap > *maxIdle {
-			gap = *maxIdle
+		if maxIdle > 0 && gap > maxIdle {
+			gap = maxIdle
 		}
 		if gap > 0 {
-			time.Sleep(time.Duration(gap / *speed * float64(time.Second)))
+			time.Sleep(time.Duration(gap / speed * float64(time.Second)))
 		}
 		if ev.Type == "o" {
 			_, _ = io.WriteString(os.Stdout, ev.Data)

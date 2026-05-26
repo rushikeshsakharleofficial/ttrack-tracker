@@ -1,0 +1,23 @@
+[Unit]
+Description=ttrack session recording collector (root-only central store)
+Documentation=man:ttrack(1)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/libexec/ttrackd
+Restart=on-failure
+RestartSec=2
+# The daemon must run as root to own /var/lib/ttrack and read user-local
+# spool files during startup ingest.
+User=root
+# Hardening: it only needs its socket, the central store, and user home spools.
+ProtectSystem=full
+ReadWritePaths=/var/lib/ttrack /run
+NoNewPrivileges=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

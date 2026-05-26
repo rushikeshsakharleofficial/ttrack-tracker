@@ -8,6 +8,7 @@ all: build
 
 build:
 	CGO_ENABLED=0 go build -trimpath -o bin/ttrack ./cmd/ttrack
+	CGO_ENABLED=0 go build -trimpath -o bin/ttrackd ./cmd/ttrackd
 
 test:
 	go test ./...
@@ -20,7 +21,10 @@ vet:
 
 install: build
 	install -Dm755 bin/ttrack $(DESTDIR)$(PREFIX)/bin/ttrack
+	install -Dm755 bin/ttrackd $(DESTDIR)/usr/libexec/ttrackd
 	install -Dm644 man/ttrack.1 $(DESTDIR)$(PREFIX)/share/man/man1/ttrack.1
+	install -Dm644 scripts/systemd/ttrackd.service $(DESTDIR)/lib/systemd/system/ttrackd.service
+	install -dm700 $(DESTDIR)/var/lib/ttrack
 
 packages: rpm deb
 

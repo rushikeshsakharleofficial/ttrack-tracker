@@ -1,4 +1,10 @@
-// Package store manages where recordings live and lists them.
+// Package store manages where recordings live and how they are listed.
+//
+// Two locations exist:
+//   - user-local: $TTRACK_DIR or ~/.local/share/ttrack (fallback when the
+//     daemon is down; later swept into the central store).
+//   - central:    $TTRACK_CENTRAL_DIR or /var/lib/ttrack, root:root 0700,
+//     per-user subdirs, files 0600 — only root can read these.
 package store
 
 import (
@@ -14,7 +20,7 @@ import (
 	"ttrack/internal/cast"
 )
 
-// Dir returns the recordings directory ($TTRACK_DIR or ~/.local/share/ttrack).
+// Dir returns the user-local recordings directory.
 func Dir() string {
 	if d := os.Getenv("TTRACK_DIR"); d != "" {
 		return d
@@ -26,20 +32,32 @@ func Dir() string {
 	return filepath.Join(home, ".local", "share", "ttrack")
 }
 
-// NewPath returns an auto-named cast path, creating the store dir if needed.
+// CentralDir returns the central root-only recordings directory.
+func CentralDir() string {
+	if d := os.Getenv("TTRACK_CENTRAL_DIR"); d != "" {
+		return d
+	}
+	return "/var/lib/ttrack"
+}
+
+// NewPath returns an auto-named cast path in the user-local dir, creating it.
 func NewPath() (string, error) {
 	d := Dir()
 	if err := os.MkdirAll(d, 0o700); err != nil {
 		return "", err
 	}
-	name := fmt.Sprintf("%s-%d.cast", time.Now().Format("20060102T150405"), os.Getpid())
-	return filepath.Join(d, name), nil
+	return filepath.Join(d, NewName()), nil
 }
 
-// List prints recorded sessions. args is unused for now.
+// NewName returns an auto-generated cast filename: <timestamp>-<pid>.cast.
+func NewName() string {
+	return fmt.Sprintf("%s-%d.cast", time.Now().Format("20060102T150405"), os.Getpid())
+}
+
+// List prints user-local recordings (the personal view).
 func List(args []string) error {
 	d := Dir()
-	entries, err := os.ReadDir(d)
+	files, err := castsIn(d)
 	if err != nil {
 		if os.IsNotExist(err) {
 			fmt.Printf("no recordings yet (dir: %s)\n", d)
@@ -47,7 +65,67 @@ func List(args []string) error {
 		}
 		return err
 	}
+	if len(files) == 0 {
+		fmt.Printf("no recordings in %s\n", d)
+		return nil
+	}
+	fmt.Printf("%-7s  %-26s  %-19s  %s\n", "STATUS", "FILE", "STARTED", "COMMAND")
+	for _, name := range files {
+		h, _ := readHeader(filepath.Join(d, name))
+		status := "SAVED"
+		if isActive(name) {
+			status = "ACTIVE"
+		}
+		fmt.Printf("%-7s  %-26s  %-19s  %s\n", status, name, started(h), h.Command)
+	}
+	return nil
+}
 
+// Users lists usernames that have a directory in the central store.
+func Users() ([]string, error) {
+	entries, err := os.ReadDir(CentralDir())
+	if err != nil {
+		return nil, err
+	}
+	var users []string
+	for _, e := range entries {
+		if e.IsDir() {
+			users = append(users, e.Name())
+		}
+	}
+	sort.Strings(users)
+	return users, nil
+}
+
+// UserSessions lists the cast filenames for a user in the central store.
+func UserSessions(user string) ([]string, error) {
+	return castsIn(filepath.Join(CentralDir(), user))
+}
+
+// FindCentral locates a session by id (filename or its stem) across all users
+// in the central store. Returns the full path and the owning user.
+func FindCentral(id string) (path, user string, err error) {
+	id = strings.TrimSuffix(id, ".cast")
+	users, err := Users()
+	if err != nil {
+		return "", "", err
+	}
+	for _, u := range users {
+		names, _ := UserSessions(u)
+		for _, n := range names {
+			if strings.TrimSuffix(n, ".cast") == id {
+				return filepath.Join(CentralDir(), u, n), u, nil
+			}
+		}
+	}
+	return "", "", fmt.Errorf("session %q not found in %s", id, CentralDir())
+}
+
+func castsIn(dir string) ([]string, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
 	var files []string
 	for _, e := range entries {
 		if !e.IsDir() && filepath.Ext(e.Name()) == ".cast" {
@@ -55,31 +133,35 @@ func List(args []string) error {
 		}
 	}
 	sort.Strings(files)
-	if len(files) == 0 {
-		fmt.Printf("no recordings in %s\n", d)
-		return nil
-	}
-
-	fmt.Printf("%-7s  %-26s  %-19s  %s\n", "STATUS", "FILE", "STARTED", "COMMAND")
-	for _, name := range files {
-		h, _ := readHeader(filepath.Join(d, name))
-		started := "?"
-		if h.Timestamp > 0 {
-			started = time.Unix(h.Timestamp, 0).Format("2006-01-02 15:04:05")
-		}
-		status := "SAVED"
-		if isActive(name) {
-			status = "ACTIVE"
-		}
-		fmt.Printf("%-7s  %-26s  %-19s  %s\n", status, name, started, h.Command)
-	}
-	return nil
+	return files, nil
 }
+
+func started(h cast.Header) string {
+	if h.Timestamp > 0 {
+		return time.Unix(h.Timestamp, 0).Format("2006-01-02 15:04:05")
+	}
+	return "?"
+}
+
+func readHeader(path string) (cast.Header, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return cast.Header{}, err
+	}
+	defer f.Close()
+	return cast.ReadHeader(bufio.NewReader(f))
+}
+
+// Header reads and returns a cast file's header (exported for CLI use).
+func Header(path string) (cast.Header, error) { return readHeader(path) }
+
+// Started formats a header's start time (exported for CLI use).
+func Started(h cast.Header) string { return started(h) }
 
 // isActive reports whether the recorder that created an auto-named file
 // (<timestamp>-<pid>.cast) is still running. Linux-specific via /proc.
 func isActive(name string) bool {
-	base := strings.TrimSuffix(name, ".cast")
+	base := strings.TrimSuffix(filepath.Base(name), ".cast")
 	i := strings.LastIndex(base, "-")
 	if i < 0 {
 		return false
@@ -95,11 +177,5 @@ func isActive(name string) bool {
 	return strings.TrimSpace(string(comm)) == "ttrack"
 }
 
-func readHeader(path string) (cast.Header, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return cast.Header{}, err
-	}
-	defer f.Close()
-	return cast.ReadHeader(bufio.NewReader(f))
-}
+// IsActive is the exported form of isActive for CLI use.
+func IsActive(name string) bool { return isActive(name) }

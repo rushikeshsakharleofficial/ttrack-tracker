@@ -18,6 +18,19 @@ ttrack \- record and replay Linux terminal sessions
 .br
 .B ttrack ls
 .br
+.B ttrack ls-user
+.RI [ username ]
+.br
+.B ttrack play-user
+.RB [ \-\-speed
+.IR N ]
+.I sessionid
+.br
+.B ttrack tail
+.I sessionid
+.br
+.B ttrack tree
+.br
 .B ttrack help
 .SH DESCRIPTION
 .B ttrack
@@ -77,6 +90,12 @@ Write the recording to
 .IR file .
 By default a file is auto-named in the store directory (see
 .BR FILES ).
+Implies local recording (bypasses the daemon).
+.TP
+.B \-q
+Quiet: suppress the recording banner and the saved-path message. Also enabled
+by setting
+.BR TTRACK_QUIET=1 .
 .SS play options
 .TP
 .BI \-\-speed " N"
@@ -95,11 +114,66 @@ Default
 Set to
 .B 0
 to disable the cap and replay with exact original timing.
+.SH AUDIT COMMANDS
+When the
+.B ttrackd
+daemon is installed (it runs as root and collects all users' sessions into
+the root-only central store
+.IR /var/lib/ttrack ),
+these commands review and watch recordings. They require root, since the
+central store is readable only by root.
+.TP
+.B ls-user \fR[\fIusername\fR]
+With no argument, list users that have recordings and their session counts.
+With a
+.IR username ,
+list that user's sessions.
+.TP
+.BI "play-user " sessionid
+Replay a session by id, searched across all users in the central store.
+Accepts
+.B \-\-speed
+and
+.BR \-\-idle .
+.TP
+.BI "tail " sessionid
+Live-stream an in-progress session from the daemon as it is recorded.
+.TP
+.B tree
+Print a tree of users and their sessions.
+.PP
+When
+.B ttrackd
+is running,
+.B ttrack rec
+streams to it over
+.I /run/ttrackd.sock
+and recordings are stored centrally (root-owned). If the daemon is down,
+.B ttrack rec
+falls back to the user-local directory and the daemon ingests those files on
+its next startup.
 .SH ENVIRONMENT
 .TP
 .B TTRACK_DIR
-Directory where recordings are stored and listed. If unset, defaults to
+User-local recordings directory. If unset, defaults to
 .IR ~/.local/share/ttrack .
+.TP
+.B TTRACK_CENTRAL_DIR
+Central root-only store read by the audit commands and written by
+.BR ttrackd .
+If unset, defaults to
+.IR /var/lib/ttrack .
+.TP
+.B TTRACKD_SOCK
+Daemon socket path used by
+.B ttrack rec
+and the audit commands. If unset, defaults to
+.IR /run/ttrackd.sock .
+.TP
+.B TTRACK_QUIET
+If set to a non-empty value,
+.B ttrack rec
+suppresses its banner and saved-path message.
 .TP
 .B SHELL
 Shell launched by

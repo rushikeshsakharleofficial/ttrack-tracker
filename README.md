@@ -88,11 +88,35 @@ Behavior:
 
 Disable by removing the file: `sudo rm /etc/profile.d/ttrack-autorec.sh`.
 
+## Audit mode (central root-only store)
+
+Installed packages run **`ttrackd`**, a root daemon that collects sessions from
+all users into a root-only central store at `/var/lib/ttrack` (`root:root 0700`,
+files `0600`) — normal users cannot read recordings.
+
+- `ttrack rec` streams to `ttrackd` over `/run/ttrackd.sock` when it is running;
+  recordings land in the central store, owned by root.
+- **Fail-open**: if the daemon is down, `ttrack rec` falls back to the user-local
+  dir, and `ttrackd` ingests those files into the central store on next startup.
+- Audit commands (run as **root**):
+
+```bash
+ttrack ls-user                    # users that have recordings
+ttrack ls-user alice              # alice's sessions
+ttrack play-user <sessionid>      # replay a session by id (any user)
+ttrack tail <sessionid>           # live-stream an in-progress session
+ttrack tree                       # users -> sessions tree
+```
+
+**Integrity note:** this gives root-only *access* to recordings and live watch.
+It is not tamper-*proof* against a malicious user (who could avoid `ttrack`
+entirely); true non-circumventable capture requires PAM/kernel-stage hooks.
+
 ## Limitations
 
 - Records PTY output only — keystrokes are not captured.
-- Single local session scope: no daemon, no PAM integration, no remote storage. Auto-recording on login is available via the optional profile.d hook above.
 - `ttrack rec` records the shell it launches, not pre-existing sessions.
+- Audit/central commands require root (the central store is root-only).
 
 ## License
 

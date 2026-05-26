@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"ttrack/internal/audit"
 	"ttrack/internal/play"
 	"ttrack/internal/record"
 	"ttrack/internal/store"
@@ -23,6 +24,14 @@ func main() {
 		err = play.Run(os.Args[2:])
 	case "ls", "list":
 		err = store.List(os.Args[2:])
+	case "ls-user":
+		err = audit.LsUser(os.Args[2:])
+	case "play-user":
+		err = audit.PlayUser(os.Args[2:])
+	case "tail":
+		err = audit.Tail(os.Args[2:])
+	case "tree":
+		err = audit.Tree(os.Args[2:])
 	case "-h", "--help", "help":
 		usage()
 		return
@@ -42,11 +51,19 @@ func usage() {
 	fmt.Fprint(os.Stderr, `ttrack — Linux terminal session tracker
 
 usage:
-  ttrack rec [-o file] [cmd...]    record a shell session (default: $SHELL)
-  ttrack play [--speed N] file     replay a recorded session
-  ttrack ls                        list recorded sessions
+  ttrack rec [-q] [-o file] [cmd...]   record a shell session (default: $SHELL)
+  ttrack play [--speed N] file         replay a local recording
+  ttrack ls                            list your local recordings
 
-recordings stored in $TTRACK_DIR or ~/.local/share/ttrack
+audit commands (read the central root-only store; run as root):
+  ttrack ls-user                       list users that have recordings
+  ttrack ls-user <username>            list a user's sessions
+  ttrack play-user [--speed N] <id>    replay a session by id (any user)
+  ttrack tail <id>                     live-stream an in-progress session
+  ttrack tree                          users -> sessions tree
+
+local recordings: $TTRACK_DIR or ~/.local/share/ttrack
+central store:    $TTRACK_CENTRAL_DIR or /var/lib/ttrack (root:root 0700)
 format: asciinema v2 cast (.cast) — also playable with `+"`asciinema play`"+`
 `)
 }

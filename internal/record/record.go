@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -19,6 +20,13 @@ import (
 	"ttrack/internal/cast"
 	"ttrack/internal/store"
 )
+
+func daemonSocket() string {
+	if s := os.Getenv("TTRACKD_SOCK"); s != "" {
+		return s
+	}
+	return "/run/ttrackd.sock"
+}
 
 // Run records a session. args is the rec subcommand's argv (after "rec").
 func Run(args []string) error {
@@ -39,19 +47,39 @@ func Run(args []string) error {
 		cmdArgs = []string{shell}
 	}
 
-	path := *out
-	if path == "" {
-		p, err := store.NewPath()
+	// Choose the recording sink:
+	//   - explicit -o: always a local file at that path.
+	//   - otherwise: stream to the root daemon if reachable (central, root-only);
+	//     fall back to a user-local file if the daemon is down (fail-open).
+	var sink io.WriteCloser
+	var dest string // human description for the banner
+	if *out == "" {
+		if conn, derr := net.DialTimeout("unix", daemonSocket(), 1*time.Second); derr == nil {
+			if _, werr := conn.Write([]byte("REC\n")); werr == nil {
+				sink = conn
+				dest = "ttrackd (central)"
+			} else {
+				_ = conn.Close()
+			}
+		}
+	}
+	if sink == nil {
+		path := *out
+		if path == "" {
+			p, err := store.NewPath()
+			if err != nil {
+				return err
+			}
+			path = p
+		}
+		f, err := os.Create(path)
 		if err != nil {
 			return err
 		}
-		path = p
+		sink = f
+		dest = path
 	}
-	f, err := os.Create(path)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
+	defer sink.Close()
 
 	stdinFd := int(os.Stdin.Fd())
 	width, height := 80, 24
@@ -61,7 +89,7 @@ func Run(args []string) error {
 		}
 	}
 
-	cw, err := cast.NewWriter(f, cast.Header{
+	cw, err := cast.NewWriter(sink, cast.Header{
 		Width:     width,
 		Height:    height,
 		Timestamp: time.Now().Unix(),
@@ -77,7 +105,7 @@ func Run(args []string) error {
 
 	if !quiet {
 		fmt.Fprintf(os.Stderr,
-			"ttrack: recording to %s — type 'exit' or Ctrl-D to stop\r\n", path)
+			"ttrack: recording to %s — type 'exit' or Ctrl-D to stop\r\n", dest)
 	}
 
 	cmd := exec.Command(cmdArgs[0], cmdArgs[1:]...)
@@ -143,7 +171,7 @@ func Run(args []string) error {
 	restore()
 
 	if !quiet {
-		fmt.Fprintf(os.Stderr, "\r\nttrack: session saved to %s\n", path)
+		fmt.Fprintf(os.Stderr, "\r\nttrack: session saved to %s\n", dest)
 	}
 
 	// Surface the child's exit code without treating it as a ttrack error.
