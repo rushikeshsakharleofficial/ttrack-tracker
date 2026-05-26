@@ -68,15 +68,18 @@ func LsUser(args []string) error {
 		fmt.Printf("no sessions for user %q\n", user)
 		return nil
 	}
-	fmt.Printf("%-7s  %-12s  %-26s  %-19s  %s\n", "STATUS", "TYPE", "SESSION", "STARTED", "COMMAND")
+	fmt.Printf("%-7s  %-12s  %-26s  %-19s  %-9s  %s\n", "STATUS", "TYPE", "SESSION", "STARTED", "DURATION", "COMMAND")
 	for _, name := range sessions {
-		h, _ := store.Header(centralPath(user, name))
+		p := centralPath(user, name)
+		h, _ := store.Header(p)
 		status := "SAVED"
+		dur := store.Duration(p)
 		if store.IsActive(name) {
 			status = "ACTIVE"
+			dur += "+"
 		}
-		fmt.Printf("%-7s  %-12s  %-26s  %-19s  %s\n",
-			status, sessionKind(h.Command), name, store.Started(h), h.Command)
+		fmt.Printf("%-7s  %-12s  %-26s  %-19s  %-9s  %s\n",
+			status, sessionKind(h.Command), name, store.Started(h), dur, h.Command)
 	}
 	return nil
 }
@@ -165,13 +168,16 @@ func printUserSessions(user, indent string) {
 	sessions, _ := store.UserSessions(user)
 	for si, name := range sessions {
 		sbranch, _ := treeBranch(si == len(sessions)-1)
-		h, _ := store.Header(centralPath(user, name))
+		p := centralPath(user, name)
+		h, _ := store.Header(p)
 		status := "SAVED"
+		dur := store.Duration(p)
 		if store.IsActive(name) {
 			status = "ACTIVE"
+			dur += "+"
 		}
-		fmt.Printf("%s%s %s  [%s %s]  %s  %s\n",
-			indent, sbranch, name, status, sessionKind(h.Command), store.Started(h), h.Command)
+		fmt.Printf("%s%s %s  [%s %s]  %s  %s  %s\n",
+			indent, sbranch, name, status, sessionKind(h.Command), store.Started(h), dur, h.Command)
 	}
 }
 

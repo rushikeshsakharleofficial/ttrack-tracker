@@ -138,14 +138,17 @@ func List(args []string) error {
 		fmt.Printf("no recordings in %s\n", d)
 		return nil
 	}
-	fmt.Printf("%-7s  %-26s  %-19s  %s\n", "STATUS", "FILE", "STARTED", "COMMAND")
+	fmt.Printf("%-7s  %-26s  %-19s  %-9s  %s\n", "STATUS", "FILE", "STARTED", "DURATION", "COMMAND")
 	for _, name := range files {
-		h, _ := readHeader(filepath.Join(d, name))
+		p := filepath.Join(d, name)
+		h, _ := readHeader(p)
 		status := "SAVED"
+		dur := Duration(p)
 		if isActive(name) {
 			status = "ACTIVE"
+			dur += "+"
 		}
-		fmt.Printf("%-7s  %-26s  %-19s  %s\n", status, name, started(h), h.Command)
+		fmt.Printf("%-7s  %-26s  %-19s  %-9s  %s\n", status, name, started(h), dur, h.Command)
 	}
 	return nil
 }
@@ -226,6 +229,48 @@ func Header(path string) (cast.Header, error) { return readHeader(path) }
 
 // Started formats a header's start time (exported for CLI use).
 func Started(h cast.Header) string { return started(h) }
+
+// Duration returns the recording's length formatted (e.g. "1m05s"), measured
+// as the timestamp of its last event. Reads the cast bounded to its size at
+// open, so an in-progress session reports elapsed-so-far. "-" if unreadable.
+func Duration(path string) string {
+	rc, err := OpenCastSnapshot(path)
+	if err != nil {
+		return "-"
+	}
+	defer rc.Close()
+	r := bufio.NewReader(rc)
+	if _, err := cast.ReadHeader(r); err != nil {
+		return "-"
+	}
+	var last float64
+	for {
+		ev, rerr := cast.ReadEvent(r)
+		if rerr != nil {
+			break
+		}
+		last = ev.Time
+	}
+	return humanDuration(last)
+}
+
+func humanDuration(secs float64) string {
+	if secs <= 0 {
+		return "0s"
+	}
+	d := time.Duration(secs * float64(time.Second))
+	h := int(d / time.Hour)
+	m := int(d/time.Minute) % 60
+	s := int(d/time.Second) % 60
+	switch {
+	case h > 0:
+		return fmt.Sprintf("%dh%02dm%02ds", h, m, s)
+	case m > 0:
+		return fmt.Sprintf("%dm%02ds", m, s)
+	default:
+		return fmt.Sprintf("%ds", s)
+	}
+}
 
 // isActive reports whether the recorder that created an auto-named file
 // (<timestamp>-<pid>.cast) is still running. Linux-specific via /proc.

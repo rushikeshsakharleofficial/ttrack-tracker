@@ -114,8 +114,8 @@ Linux 5.14.0-611.55.1.el9_7.x86_64
 ttrack: session saved to /home/alice/.local/share/ttrack/20260526T145029-1413696.cast
 
 $ ttrack ls
-STATUS   FILE                          STARTED              COMMAND
-SAVED    20260526T145029-1413696.cast  2026-05-26 14:50:29  /bin/bash -c echo "hello from ttrack"; uname -sr
+STATUS   FILE                          STARTED              DURATION   COMMAND
+SAVED    20260526T145029-1413696.cast  2026-05-26 14:50:29  2s         /bin/bash -c echo "hello from ttrack"; uname -sr
 
 $ ttrack play --speed 100 20260526T145029-1413696.cast
 --- ttrack replay start ---
@@ -134,7 +134,7 @@ With no command, `ttrack rec` records your `$SHELL` interactively until you `exi
 |:--------|:------------|
 | `ttrack rec [-q] [-o file] [cmd...]` | Record a session. Runs `$SHELL` (fallback `/bin/bash`) with no command. |
 | `ttrack play [--speed N] [--idle N] <file>` | Replay a recording with original timing. Resolves a path, a local `ls` id, or — run as root — a central-store session id (same as `play-user`). |
-| `ttrack ls` | List your local recordings (`STATUS`, `FILE`, `STARTED`, `COMMAND`). |
+| `ttrack ls` | List your local recordings (`STATUS`, `FILE`, `STARTED`, `DURATION`, `COMMAND`). |
 | `ttrack completion bash` | Print the bash completion script. |
 
 `rec` flags: `-o <file>` writes a local file at that path; `-q` (or `TTRACK_QUIET=1`) suppresses the recording banner and saved-path message.
@@ -170,20 +170,22 @@ root                  1
 alice                 7
 
 $ sudo ttrack ls-user alice
-STATUS   TYPE          SESSION                       STARTED              COMMAND
-SAVED    non-interactive  20260526T145020-1413240.cast  2026-05-26 14:50:19  /bin/bash -c echo deploy-step-1; whoami
+STATUS   TYPE             SESSION                       STARTED              DURATION   COMMAND
+SAVED    non-interactive  20260526T145020-1413240.cast  2026-05-26 14:50:19  3s         /bin/bash -c echo deploy-step-1; whoami
 
 $ sudo ttrack tree
 /var/lib/ttrack
 ├─ root
-│  └─ 20260526T124229-1909275.cast  [SAVED interactive]  2026-05-26 12:42:29  /bin/bash
+│  └─ 20260526T124229-1909275.cast  [SAVED interactive]  2026-05-26 12:42:29  17m28s  /bin/bash
 └─ alice
-   └─ 20260526T145020-1413240.cast  [SAVED non-interactive]  2026-05-26 14:50:19  /bin/bash -c echo deploy-step-1; whoami
+   └─ 20260526T145020-1413240.cast  [SAVED non-interactive]  2026-05-26 14:50:19  3s  /bin/bash -c echo deploy-step-1; whoami
 ```
 
 The `TYPE` column distinguishes an **interactive** login shell from a
 **non-interactive** command session (`<shell> -c …`, e.g. an `ssh host "cmd"`
 recorded via the `ForceCommand` wrapper). `tree` shows the same as a `[STATUS TYPE]` tag.
+`DURATION` is the recorded length (last event timestamp); an in-progress session
+shows elapsed-so-far with a trailing `+`.
 
 Search recordings for a string (e.g. a command that was run), optionally within a
 time window:
