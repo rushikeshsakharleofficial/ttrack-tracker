@@ -24,6 +24,7 @@ install: build
 	install -Dm755 bin/ttrackd $(DESTDIR)/usr/libexec/ttrackd
 	install -Dm644 man/ttrack.1 $(DESTDIR)$(PREFIX)/share/man/man1/ttrack.1
 	install -Dm644 scripts/systemd/ttrackd.service $(DESTDIR)/lib/systemd/system/ttrackd.service
+	install -Dm644 internal/complete/ttrack.bash $(DESTDIR)$(PREFIX)/share/bash-completion/completions/ttrack
 	install -dm700 $(DESTDIR)/var/lib/ttrack
 
 packages: rpm deb

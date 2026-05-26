@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"ttrack/internal/audit"
+	"ttrack/internal/complete"
 	"ttrack/internal/play"
 	"ttrack/internal/record"
 	"ttrack/internal/store"
@@ -32,6 +33,10 @@ func main() {
 		err = audit.Tail(os.Args[2:])
 	case "tree":
 		err = audit.Tree(os.Args[2:])
+	case "completion":
+		err = complete.Script(os.Args[2:])
+	case "__complete":
+		err = complete.Complete(os.Args[2:])
 	case "-h", "--help", "help":
 		usage()
 		return
@@ -61,6 +66,8 @@ audit commands (read the central root-only store; run as root):
   ttrack play-user [--speed N] <id>    replay a session by id (any user)
   ttrack tail <id>                     live-stream an in-progress session
   ttrack tree                          users -> sessions tree
+
+  ttrack completion bash               print the bash completion script
 
 local recordings: $TTRACK_DIR or ~/.local/share/ttrack
 central store:    $TTRACK_CENTRAL_DIR or /var/lib/ttrack (root:root 0700)
