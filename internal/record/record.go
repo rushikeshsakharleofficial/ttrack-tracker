@@ -156,6 +156,7 @@ func Run(args []string) error {
 			if n > 0 {
 				_, _ = os.Stdout.Write(buf[:n])
 				_ = cw.WriteOutput(time.Since(start).Seconds(), buf[:n])
+				_ = cw.Flush() // push promptly so live tail / the daemon see output
 			}
 			if rerr != nil {
 				return

@@ -55,11 +55,29 @@ type castReadCloser struct {
 func (c *castReadCloser) Close() error { return c.f.Close() }
 
 // OpenCast opens a cast file for reading, transparently decrypting it if it is
-// an encrypted (magic-prefixed) file. Plaintext files are returned as-is.
+// an encrypted (magic-prefixed) file. Reads follow the file to its end,
+// including data appended after opening (used by live tail).
 func OpenCast(path string) (io.ReadCloser, error) {
+	return openCast(path, false)
+}
+
+// OpenCastSnapshot is like OpenCast but bounded to the file's size at open
+// time, so replaying an in-progress recording stops at the point playback
+// began instead of following (and never finishing) a still-growing session.
+func OpenCastSnapshot(path string) (io.ReadCloser, error) {
+	return openCast(path, true)
+}
+
+func openCast(path string, snapshot bool) (io.ReadCloser, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
+	}
+	var size int64 = -1
+	if snapshot {
+		if fi, serr := f.Stat(); serr == nil {
+			size = fi.Size()
+		}
 	}
 	magic := make([]byte, len(crypto.Magic))
 	n, _ := io.ReadFull(f, magic)
@@ -69,17 +87,24 @@ func OpenCast(path string) (io.ReadCloser, error) {
 			f.Close()
 			return nil, fmt.Errorf("cannot read decryption key %s: %w", KeyPath(), kerr)
 		}
-		dr, derr := crypto.NewReader(f, key)
+		var src io.Reader = f
+		if size >= 0 {
+			src = io.LimitReader(f, size-int64(len(crypto.Magic)))
+		}
+		dr, derr := crypto.NewReader(src, key)
 		if derr != nil {
 			f.Close()
 			return nil, derr
 		}
 		return &castReadCloser{Reader: dr, f: f}, nil
 	}
-	// Plaintext: rewind and hand back the raw file.
+	// Plaintext: rewind and hand back the raw file (bounded if snapshot).
 	if _, err := f.Seek(0, io.SeekStart); err != nil {
 		f.Close()
 		return nil, err
+	}
+	if size >= 0 {
+		return &castReadCloser{Reader: io.LimitReader(f, size), f: f}, nil
 	}
 	return f, nil
 }

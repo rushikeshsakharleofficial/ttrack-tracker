@@ -52,7 +52,9 @@ func PlayFile(path string, speed, maxIdle float64) error {
 	if speed <= 0 {
 		speed = 1.0
 	}
-	rc, err := store.OpenCast(path)
+	// Snapshot at open time: replaying an in-progress recording stops at the
+	// point playback began rather than following the still-growing file.
+	rc, err := store.OpenCastSnapshot(path)
 	if err != nil {
 		return err
 	}
