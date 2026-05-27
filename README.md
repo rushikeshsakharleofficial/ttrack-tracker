@@ -98,21 +98,21 @@ Every push to `main` publishes an `rpm`, a `deb`, and a static binary on the [re
 **Debian / Ubuntu (.deb):**
 
 ```bash
-curl -fLO https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases/download/v0.3.24/ttrack_0.3.24_amd64.deb
-sudo apt install ./ttrack_0.3.24_amd64.deb
+curl -fLO https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases/download/v0.4.7/ttrack_0.4.7_amd64.deb
+sudo apt install ./ttrack_0.4.7_amd64.deb
 ```
 
 **RHEL / Rocky / Fedora (.rpm):**
 
 ```bash
-curl -fLO https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases/download/v0.3.24/ttrack-0.3.24-1.x86_64.rpm
-sudo dnf install ./ttrack-0.3.24-1.x86_64.rpm
+curl -fLO https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases/download/v0.4.7/ttrack-0.4.7-1.x86_64.rpm
+sudo dnf install ./ttrack-0.4.7-1.x86_64.rpm
 ```
 
 **Static binary (any distro):**
 
 ```bash
-curl -fL -o ttrack https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases/download/v0.3.24/ttrack-0.3.24-linux-amd64
+curl -fL -o ttrack https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases/download/v0.4.7/ttrack-0.4.7-linux-amd64
 chmod +x ttrack && sudo install -m755 ttrack /usr/bin/ttrack
 ```
 
