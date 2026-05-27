@@ -1,5 +1,5 @@
 .\" Manpage for ttrack.
-.TH TTRACK 1 "2026-05-27" "ttrack 0.5.0" "User Commands"
+.TH TTRACK 1 "2026-05-27" "ttrack 0.5.1" "User Commands"
 .SH NAME
 ttrack \- record and replay Linux terminal sessions
 .SH SYNOPSIS
@@ -136,6 +136,40 @@ means
 real-time replay (like a video). Set
 .I N
 > 0 to compress long pauses for quick review.
+.SS Interactive replay controls
+When
+.B play
+or
+.B play-user
+replays to a terminal, playback responds to the keyboard. A backward seek
+resets the terminal and re-renders all output up to the target time. Controls
+require a real terminal; when output is piped or redirected, playback runs
+straight through and
+.B \-\-idle
+applies. In interactive mode
+.B \-\-idle
+is ignored \(em use seek instead.
+.TP
+.B space
+Pause or resume.
+.TP
+.BR "\(-> " "/ " l
+Seek forward 5 seconds.
+.TP
+.BR "\(<- " "/ " h
+Seek backward 5 seconds.
+.TP
+.BR "\(ua " "/ " +
+Double the playback speed (up to 64x).
+.TP
+.BR "\(da " "/ " \-
+Halve the playback speed (down to 1/64x).
+.TP
+.B 0
+Restart from the beginning.
+.TP
+.BR q " / " Ctrl-C
+Quit.
 .SH AUDIT COMMANDS
 When the
 .B ttrackd
