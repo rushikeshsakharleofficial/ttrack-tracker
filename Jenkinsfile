@@ -48,11 +48,12 @@ pipeline {
                             set -e
                             version="${RELEASE_VERSION}"
 
-                            sed -i -E "s/^VERSION \\?= .*/VERSION ?= ${version}/" Makefile
-                            sed -i -E "s/(\"ttrack )[0-9]+[.][0-9]+[.][0-9]+\"/\\1${version}\"/" man/ttrack.1
+                            sed -i -E "s/^VERSION [?]= .*/VERSION ?= ${version}/" Makefile
+                            sed -i -E "s/ttrack [0-9]+[.][0-9]+[.][0-9]+/ttrack ${version}/" man/ttrack.1
                             sed -i -E \
-                                -e "s#(releases/download/v)[0-9]+[.][0-9]+[.][0-9]+#\\1${version}#g" \
-                                -e "s#(ttrack[_-])[0-9]+[.][0-9]+[.][0-9]+#\\1${version}#g" \
+                                -e "s#releases/download/v[0-9]+[.][0-9]+[.][0-9]+#releases/download/v${version}#g" \
+                                -e "s#ttrack_[0-9]+[.][0-9]+[.][0-9]+#ttrack_${version}#g" \
+                                -e "s#ttrack-[0-9]+[.][0-9]+[.][0-9]+#ttrack-${version}#g" \
                                 README.md
 
                             if git diff --quiet -- Makefile man/ttrack.1 README.md; then
