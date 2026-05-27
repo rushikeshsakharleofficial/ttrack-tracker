@@ -57,6 +57,22 @@ pipeline {
             }
         }
 
+        stage('Package') {
+            steps {
+                sh '''
+                    mkdir -p release
+                    go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
+                    TTRACK_VERSION=$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo "0.0.0") \
+                        make packages
+                '''
+            }
+            post {
+                success {
+                    archiveArtifacts artifacts: 'release/*.rpm,release/*.deb', allowEmptyArchive: true, fingerprint: true
+                }
+            }
+        }
+
         stage('SonarQube') {
             when {
                 expression { env.GIT_BRANCH == 'origin/main' || env.BRANCH_NAME == 'main' }
