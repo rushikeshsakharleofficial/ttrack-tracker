@@ -62,21 +62,23 @@ pipeline {
                 branch 'main'
             }
             steps {
-                sh '''
-                    cat > sonar-project.properties << EOF
+                withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+                    sh '''
+                        cat > sonar-project.properties << EOF
 sonar.projectKey=ttrack
 sonar.projectName=ttrack
 sonar.sources=.
 sonar.exclusions=build/**,vendor/**,*.pb.go
 sonar.go.coverage.reportPaths=coverage.out
 EOF
-                    go test ./... -coverprofile=coverage.out ./... 2>/dev/null || true
-                    docker run --rm \
-                        -e SONAR_HOST_URL=http://142.44.210.103:9000 \
-                        -e SONAR_TOKEN=sqa_05ae456fd27d50d88284e61a7b2c57b57a5e590e \
-                        -v "$PWD:/usr/src" \
-                        sonarsource/sonar-scanner-cli
-                '''
+                        go test ./... -coverprofile=coverage.out ./... 2>/dev/null || true
+                        docker run --rm \
+                            -e SONAR_HOST_URL=http://142.44.210.103:9000 \
+                            -e SONAR_TOKEN="$SONAR_TOKEN" \
+                            -v "$PWD:/usr/src" \
+                            sonarsource/sonar-scanner-cli
+                    '''
+                }
             }
         }
 
