@@ -101,17 +101,18 @@ pipeline {
                           echo "$VERSION"
                         fi
                     ''', returnStdout: true).trim()
-                    sh """
-                        set -e
-                        if gh release view \"v${version}\" >/dev/null 2>&1; then
-                            echo "Release v${version} already exists"
-                        else
-                            gh release create \"v${version}\" -t \"v${version}\" -n \"ttrack ${version}\"
-                        fi
-                        for asset in release/*.{rpm,deb}; do
-                            [ -e \"$asset\" ] && gh release upload \"v${version}\" \"$asset\"
-                        done
-                    """
+                     sh """
+                         set -e
+                         if gh release view \"v${version}\" >/dev/null 2>&1; then
+                             echo "Release v${version} already exists"
+                         else
+                             gh release create \"v${version}\" -t \"v${version}\" -n \"ttrack ${version}\"
+                         fi
+                         for asset in release/*.{rpm,deb}; do
+                             [ -e \"$asset\" ] && gh release upload \"v${version}\" \"$asset\"
+                         done
+                     """
+                     echo "Jenkins artifacts: ${env.BUILD_URL}artifact/release/"
                 }
             }
         }
