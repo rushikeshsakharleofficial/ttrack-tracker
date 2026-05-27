@@ -54,7 +54,8 @@ pipeline {
             steps {
                 sh '''
                     mkdir -p build bin
-                    go build -o build/ttrack  ./cmd/ttrack/
+                    VERSION=$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo "0.0.0")
+                    go build -ldflags "-X main.Version=${VERSION}" -o build/ttrack  ./cmd/ttrack/
                     go build -o build/ttrackd ./cmd/ttrackd/
                     cp build/ttrack  bin/ttrack
                     cp build/ttrackd bin/ttrackd
