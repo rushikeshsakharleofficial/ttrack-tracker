@@ -118,18 +118,21 @@ pipeline {
                     sh '''
                         SSH_OPTS="-o StrictHostKeyChecking=no -o BatchMode=yes"
                         DEB=$(ls release/*.deb | head -1)
-                        NEW_VER=$(dpkg-deb -f "$DEB" Version)
                         scp $SSH_OPTS "$DEB" rushikesh.sakharle@89.167.44.42:/tmp/ttrack-latest.deb
-                        ssh -T $SSH_OPTS rushikesh.sakharle@89.167.44.42 bash -s -- "$NEW_VER" << 'ENDSSH'
-NEW_VER="$1"
-CUR_VER=$(dpkg -s ttrack 2>/dev/null | awk '/^Version/{print $2}')
+
+                        # ttrack's ForceCommand wrapper runs SSH_ORIGINAL_COMMAND
+                        # under a PTY, so the deploy script must not arrive on stdin.
+                        ssh -T $SSH_OPTS rushikesh.sakharle@89.167.44.42 '
+DEB=/tmp/ttrack-latest.deb
+NEW_VER=$(dpkg-deb -f "$DEB" Version)
+CUR_VER=$(dpkg -s ttrack 2>/dev/null | awk "/^Version/{print \$2}")
 if [ "$CUR_VER" = "$NEW_VER" ]; then
     echo "ttrack $CUR_VER already installed -- skipping"
 else
     echo "upgrading ttrack $CUR_VER -> $NEW_VER"
-    sudo dpkg -i /tmp/ttrack-latest.deb && echo deployed
+    sudo dpkg -i "$DEB" && echo deployed
 fi
-ENDSSH
+'
                     '''
                 }
             }
