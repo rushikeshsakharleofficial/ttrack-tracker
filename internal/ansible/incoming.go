@@ -47,10 +47,10 @@ type incomingTask struct {
 
 // incomingRun groups tasks that ran close together (same Ansible run).
 type incomingRun struct {
-	From     time.Time
-	To       time.Time
-	User     string
-	Tasks    []incomingTask
+	From  time.Time
+	To    time.Time
+	User  string
+	Tasks []incomingTask
 }
 
 // readAnsibleResult parses the AnsiballZ execution session output and extracts

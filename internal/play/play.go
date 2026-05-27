@@ -21,13 +21,13 @@ import (
 )
 
 const (
-	hideCursor  = "\x1b[?25l"      // DECTCEM hide
-	showCursor  = "\x1b[?25h"      // DECTCEM show
-	altEnter    = "\x1b[?1049h"    // enter alternate screen (saves prior screen)
-	altExit     = "\x1b[?1049l"    // leave alternate screen (restores prior screen)
-	clearScreen = "\x1b[2J\x1b[H"  // clear and home
-	resetRegion = "\x1b[r"         // clear scroll region
-	seekStep    = 5.0              // seconds per arrow-key seek
+	hideCursor  = "\x1b[?25l"     // DECTCEM hide
+	showCursor  = "\x1b[?25h"     // DECTCEM show
+	altEnter    = "\x1b[?1049h"   // enter alternate screen (saves prior screen)
+	altExit     = "\x1b[?1049l"   // leave alternate screen (restores prior screen)
+	clearScreen = "\x1b[2J\x1b[H" // clear and home
+	resetRegion = "\x1b[r"        // clear scroll region
+	seekStep    = 5.0             // seconds per arrow-key seek
 	maxSpeed    = 64.0
 	minSpeed    = 1.0 / 64
 )
@@ -211,10 +211,10 @@ func playInteractive(events []cast.Event, speed, maxIdle float64) error {
 	if n := len(events); n > 0 {
 		lastT = events[n-1].Time
 	}
-	idx := 0             // index of the next event to emit
-	vt := 0.0            // playback time of the last emitted event
-	anchor := time.Now() // wall time vt was last synced to
-	saveDepth := 0       // recording's open DECSC (\x1b7) count; bar heal waits for 0
+	idx := 0                   // index of the next event to emit
+	vt := 0.0                  // playback time of the last emitted event
+	anchor := time.Now()       // wall time vt was last synced to
+	saveDepth := 0             // recording's open DECSC (\x1b7) count; bar heal waits for 0
 	var saveOpenedAt time.Time // when saveDepth last went positive (heal decay)
 	paused := false
 	inGoto := false

@@ -10,10 +10,10 @@ import (
 type evKind int
 
 const (
-	evByte  evKind = iota // a ground byte (printable or control) in ev.b
-	evArrow               // an arrow key; ev.b is 'A','B','C', or 'D'
-	evMouse               // a mouse button event at ev.mx,ev.my (1-based)
-	evScroll              // scroll action; ev.up true=up false=down
+	evByte   evKind = iota // a ground byte (printable or control) in ev.b
+	evArrow                // an arrow key; ev.b is 'A','B','C', or 'D'
+	evMouse                // a mouse button event at ev.mx,ev.my (1-based)
+	evScroll               // scroll action; ev.up true=up false=down
 )
 
 // event is one decoded input from the terminal.

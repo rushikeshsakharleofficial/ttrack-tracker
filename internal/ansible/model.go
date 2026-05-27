@@ -71,7 +71,7 @@ type Task struct {
 	Name   string
 	Module string
 	Host   string
-	Status string  // ok, changed, failed, unreachable, skipped
+	Status string // ok, changed, failed, unreachable, skipped
 	RC     int
 	T      float64 // Unix timestamp
 	Stdout string

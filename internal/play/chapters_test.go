@@ -56,9 +56,9 @@ func TestChapterAt(t *testing.T) {
 
 func TestSaveDelta(t *testing.T) {
 	cases := []struct {
-		in        string
-		delta     int
-		reset     bool
+		in    string
+		delta int
+		reset bool
 	}{
 		{"", 0, false},
 		{"\x1b7", 1, false},

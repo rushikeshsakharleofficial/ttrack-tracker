@@ -47,10 +47,10 @@ func TestParserArrows(t *testing.T) {
 // events — they are the terminal answering replayed queries, not user input.
 func TestParserSwallowsQueryReplies(t *testing.T) {
 	for _, seq := range []string{
-		"\x1b[?62;c",          // DA1 reply
-		"\x1b[>0;276;0c",      // DA2 reply
-		"\x1b[24;80R",         // cursor position report
-		"\x1b]11;rgb:1e1e/1e1e/1e1e\x07", // OSC color reply (BEL)
+		"\x1b[?62;c",                       // DA1 reply
+		"\x1b[>0;276;0c",                   // DA2 reply
+		"\x1b[24;80R",                      // cursor position report
+		"\x1b]11;rgb:1e1e/1e1e/1e1e\x07",   // OSC color reply (BEL)
 		"\x1b]10;rgb:ffff/ffff/ffff\x1b\\", // OSC color reply (ST)
 	} {
 		if evs := collect([]byte(seq)); len(evs) != 0 {
