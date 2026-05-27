@@ -87,6 +87,35 @@ pipeline {
             }
         }
 
+        stage('Publish GitHub Release') {
+            when {
+                expression { env.GIT_BRANCH == 'origin/main' || env.BRANCH_NAME == 'main' }
+            }
+            steps {
+                script {
+                    def version = sh(script: '''
+                        VERSION=$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//')
+                        if [ -z "$VERSION" ]; then
+                          echo "0.0.0"
+                        else
+                          echo "$VERSION"
+                        fi
+                    ''', returnStdout: true).trim()
+                    sh """
+                        set -e
+                        if gh release view \"v${version}\" >/dev/null 2>&1; then
+                            echo "Release v${version} already exists"
+                        else
+                            gh release create \"v${version}\" -t \"v${version}\" -n \"ttrack ${version}\"
+                        fi
+                        for asset in release/*.{rpm,deb}; do
+                            [ -e \"$asset\" ] && gh release upload \"v${version}\" \"$asset\"
+                        done
+                    """
+                }
+            }
+        }
+
         stage('SonarQube') {
             when {
                 expression { env.GIT_BRANCH == 'origin/main' || env.BRANCH_NAME == 'main' }
