@@ -139,13 +139,14 @@ func List(args []string) error {
 		fmt.Printf("no recordings in %s\n", d)
 		return nil
 	}
-	// Fixed column widths: STATUS(7) + FILE(26) + STARTED(19) + DURATION(9) + separators(8) = 69
-	const fixedW = 69
+	// Fixed cols: STATUS(7) + FILE(26) + STARTED(19) + DURATION(9) + separators(" │ " × 4 = 12) + leading " " = 64
+	const fixedW = 64
 	cmdW := termWidth() - fixedW
 	if cmdW < 20 {
 		cmdW = 20
 	}
-	fmt.Printf("%-7s  %-26s  %-19s  %-9s  %s\n", "STATUS", "FILE", "STARTED", "DURATION", "COMMAND")
+	cols := []TableCol{{7}, {26}, {19}, {9}, {cmdW}}
+	PrintTableHeader(cols, []string{"STATUS", "FILE", "STARTED", "DURATION", "COMMAND"})
 	for _, name := range files {
 		p := filepath.Join(d, name)
 		h, _ := readHeader(p)
@@ -155,7 +156,7 @@ func List(args []string) error {
 			status = "ACTIVE"
 			dur += "+"
 		}
-		fmt.Printf("%-7s  %-26s  %-19s  %-9s  %s\n", status, name, started(h), dur, trunc(h.Command, cmdW))
+		PrintTableRow(cols, []string{status, name, started(h), dur, trunc(h.Command, cmdW)})
 	}
 	return nil
 }
@@ -328,6 +329,34 @@ func TermWidth() int { return termWidth() }
 
 // Trunc is the exported truncate helper.
 func Trunc(s string, n int) string { return trunc(s, n) }
+
+// TableCol defines one column in a printed table.
+type TableCol struct {
+	Width int
+}
+
+// PrintTableHeader prints a header row with │ separators and a ─┼─ divider line.
+func PrintTableHeader(cols []TableCol, headers []string) {
+	parts := make([]string, len(cols))
+	for i, h := range headers {
+		parts[i] = fmt.Sprintf("%-*s", cols[i].Width, h)
+	}
+	fmt.Println(" " + strings.Join(parts, " │ "))
+	seps := make([]string, len(cols))
+	for i, c := range cols {
+		seps[i] = strings.Repeat("─", c.Width)
+	}
+	fmt.Println("─" + strings.Join(seps, "─┼─") + "─")
+}
+
+// PrintTableRow prints one data row with │ separators.
+func PrintTableRow(cols []TableCol, vals []string) {
+	parts := make([]string, len(cols))
+	for i, v := range vals {
+		parts[i] = fmt.Sprintf("%-*s", cols[i].Width, v)
+	}
+	fmt.Println(" " + strings.Join(parts, " │ "))
+}
 
 // AnsibleDir returns the ansible sub-directory for a given user in the
 // central store. Files are named <runid>.ajsonl and encrypted at rest.

@@ -51,8 +51,8 @@ func LsUser(args []string) error {
 			fmt.Printf("no recorded users in %s\n", store.CentralDir())
 			return nil
 		}
-		tw := store.TermWidth()
-		fmt.Printf("%-20s  %-8s  %s\n", "USER", "SESSIONS", "LAST ACTIVE")
+		cols0 := []store.TableCol{{20}, {8}, {19}}
+		store.PrintTableHeader(cols0, []string{"USER", "SESSIONS", "LAST ACTIVE"})
 		for _, u := range users {
 			s, _ := store.UserSessions(u)
 			last := ""
@@ -62,8 +62,7 @@ func LsUser(args []string) error {
 				h, _ := store.Header(p)
 				last = store.Started(h)
 			}
-			_ = tw
-			fmt.Printf("%-20s  %-8d  %s\n", u, len(s), last)
+			store.PrintTableRow(cols0, []string{u, fmt.Sprintf("%d", len(s)), last})
 		}
 		return nil
 	}
@@ -77,13 +76,14 @@ func LsUser(args []string) error {
 		fmt.Printf("no sessions for user %q\n", user)
 		return nil
 	}
-	// Fixed cols: STATUS(7) + TYPE(11) + SESSION(26) + STARTED(19) + DURATION(9) + separators(10) = 82
-	const fixedW = 82
+	// Fixed cols: STATUS(7) + TYPE(11) + SESSION(26) + STARTED(19) + DURATION(9) + separators(14) = 86
+	const fixedW = 86
 	cmdW := store.TermWidth() - fixedW
 	if cmdW < 20 {
 		cmdW = 20
 	}
-	fmt.Printf("%-7s  %-11s  %-26s  %-19s  %-9s  %s\n", "STATUS", "TYPE", "SESSION", "STARTED", "DURATION", "COMMAND")
+	cols1 := []store.TableCol{{7}, {11}, {26}, {19}, {9}, {cmdW}}
+	store.PrintTableHeader(cols1, []string{"STATUS", "TYPE", "SESSION", "STARTED", "DURATION", "COMMAND"})
 	for _, name := range sessions {
 		p := centralPath(user, name)
 		h, _ := store.Header(p)
@@ -97,8 +97,7 @@ func LsUser(args []string) error {
 		if typ == "non-interactive" {
 			typ = "cmd"
 		}
-		fmt.Printf("%-7s  %-11s  %-26s  %-19s  %-9s  %s\n",
-			status, typ, name, store.Started(h), dur, store.Trunc(h.Command, cmdW))
+		store.PrintTableRow(cols1, []string{status, typ, name, store.Started(h), dur, store.Trunc(h.Command, cmdW)})
 	}
 	return nil
 }
