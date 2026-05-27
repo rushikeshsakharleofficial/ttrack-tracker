@@ -7,6 +7,23 @@ mkdir -p /var/lib/ttrack
 chown root:root /var/lib/ttrack
 chmod 0700 /var/lib/ttrack
 
+# Install ForceCommand sshd config to capture non-interactive SSH sessions.
+# Idempotent: only write if not already present (preserves manual edits).
+SSHD_CONF=/etc/ssh/sshd_config.d/zz-ttrack.conf
+if [ ! -f "$SSHD_CONF" ]; then
+    cat > "$SSHD_CONF" << 'SSHD_EOF'
+# Installed by ttrack package. Remove this file to disable SSH session recording.
+# The wrapper is fail-open: scp/sftp/rsync pass through untouched.
+ForceCommand /usr/libexec/ttrack-ssh-wrap
+SSHD_EOF
+fi
+# Validate and reload sshd if config is valid.
+if command -v sshd >/dev/null 2>&1 && sshd -t 2>/dev/null; then
+    if command -v systemctl >/dev/null 2>&1; then
+        systemctl reload ssh 2>/dev/null || systemctl reload sshd 2>/dev/null || true
+    fi
+fi
+
 # Enable and (re)start the collector daemon if systemd is present.
 # The daemon generates the per-server encryption key on first start.
 if command -v systemctl >/dev/null 2>&1; then

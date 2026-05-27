@@ -74,4 +74,5 @@ contents:
 
 scripts:
   postinstall: ./packaging/postinstall.sh
-  postremove: ./packaging/postremove.sh
+  preremove:   ./packaging/preremove.sh
+  postremove:  ./packaging/postremove.sh
