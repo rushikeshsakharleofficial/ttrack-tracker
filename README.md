@@ -141,6 +141,20 @@ With no command, `ttrack rec` records your `$SHELL` interactively until you `exi
 
 `play` flags: `--speed N` playback multiplier (default `1.0`); `--idle N` caps idle gaps to N seconds — default `0` = **exact original timing** (idle/waits reproduced in full, like a video); set `N`>0 to compress pauses for quick review.
 
+**Interactive controls.** When replaying to a terminal (`play` or `play-user`), playback is controllable live:
+
+| Key | Action |
+|:----|:-------|
+| `space` | Pause / resume |
+| `→` / `l` | Seek forward 5s |
+| `←` / `h` | Seek backward 5s (re-renders the screen up to that point) |
+| `↑` / `+` | Double speed (up to 64×) |
+| `↓` / `-` | Halve speed (down to 1/64×) |
+| `0` | Restart from the beginning |
+| `q` / `Ctrl-C` | Quit |
+
+Controls need a real terminal; when output is piped or redirected, `play` runs straight through (and `--idle` still applies). `--idle` is ignored in interactive mode — use seek instead.
+
 ### Audit commands (root)
 
 These read the central root-only store and require root:
