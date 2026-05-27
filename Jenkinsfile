@@ -59,7 +59,7 @@ pipeline {
 
         stage('SonarQube') {
             when {
-                branch 'main'
+                expression { env.GIT_BRANCH == 'origin/main' || env.BRANCH_NAME == 'main' }
             }
             steps {
                 withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
@@ -84,7 +84,7 @@ EOF
 
         stage('Deploy to Jump Server') {
             when {
-                branch 'main'
+                expression { env.GIT_BRANCH == 'origin/main' || env.BRANCH_NAME == 'main' }
             }
             steps {
                 sshagent(credentials: ['jump-server-key']) {
