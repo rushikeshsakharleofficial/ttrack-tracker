@@ -51,10 +51,19 @@ func LsUser(args []string) error {
 			fmt.Printf("no recorded users in %s\n", store.CentralDir())
 			return nil
 		}
-		fmt.Printf("%-20s  %s\n", "USER", "SESSIONS")
+		tw := store.TermWidth()
+		fmt.Printf("%-20s  %-8s  %s\n", "USER", "SESSIONS", "LAST ACTIVE")
 		for _, u := range users {
 			s, _ := store.UserSessions(u)
-			fmt.Printf("%-20s  %d\n", u, len(s))
+			last := ""
+			if len(s) > 0 {
+				// Last session = last element (sorted by name = chronological)
+				p := centralPath(u, s[len(s)-1])
+				h, _ := store.Header(p)
+				last = store.Started(h)
+			}
+			_ = tw
+			fmt.Printf("%-20s  %-8d  %s\n", u, len(s), last)
 		}
 		return nil
 	}
@@ -68,7 +77,13 @@ func LsUser(args []string) error {
 		fmt.Printf("no sessions for user %q\n", user)
 		return nil
 	}
-	fmt.Printf("%-7s  %-12s  %-26s  %-19s  %-9s  %s\n", "STATUS", "TYPE", "SESSION", "STARTED", "DURATION", "COMMAND")
+	// Fixed cols: STATUS(7) + TYPE(11) + SESSION(26) + STARTED(19) + DURATION(9) + separators(10) = 82
+	const fixedW = 82
+	cmdW := store.TermWidth() - fixedW
+	if cmdW < 20 {
+		cmdW = 20
+	}
+	fmt.Printf("%-7s  %-11s  %-26s  %-19s  %-9s  %s\n", "STATUS", "TYPE", "SESSION", "STARTED", "DURATION", "COMMAND")
 	for _, name := range sessions {
 		p := centralPath(user, name)
 		h, _ := store.Header(p)
@@ -78,8 +93,12 @@ func LsUser(args []string) error {
 			status = "ACTIVE"
 			dur += "+"
 		}
-		fmt.Printf("%-7s  %-12s  %-26s  %-19s  %-9s  %s\n",
-			status, sessionKind(h.Command), name, store.Started(h), dur, h.Command)
+		typ := sessionKind(h.Command)
+		if typ == "non-interactive" {
+			typ = "cmd"
+		}
+		fmt.Printf("%-7s  %-11s  %-26s  %-19s  %-9s  %s\n",
+			status, typ, name, store.Started(h), dur, store.Trunc(h.Command, cmdW))
 	}
 	return nil
 }
@@ -151,7 +170,8 @@ func Tree(args []string) error {
 	fmt.Println(store.CentralDir())
 	for ui, u := range users {
 		ubranch, uindent := treeBranch(ui == len(users)-1)
-		fmt.Printf("%s %s\n", ubranch, u)
+		sessions, _ := store.UserSessions(u)
+		fmt.Printf("%s %-20s  (%d sessions)\n", ubranch, u, len(sessions))
 		printUserSessions(u, uindent)
 	}
 	return nil
@@ -176,8 +196,18 @@ func printUserSessions(user, indent string) {
 			status = "ACTIVE"
 			dur += "+"
 		}
-		fmt.Printf("%s%s %s  [%s %s]  %s  %s  %s\n",
-			indent, sbranch, name, status, sessionKind(h.Command), store.Started(h), dur, h.Command)
+		// Stem without .cast suffix, type abbreviation, no command (tree is for navigation not inspection)
+		stem := strings.TrimSuffix(name, ".cast")
+		typ := "shell"
+		if sessionKind(h.Command) == "non-interactive" {
+			typ = "cmd"
+		}
+		started := store.Started(h)
+		if len(started) > 16 {
+			started = started[:16] // trim seconds: "2006-01-02 15:04"
+		}
+		fmt.Printf("%s%s %-28s  %-6s %-5s  %s  %s\n",
+			indent, sbranch, stem, status, typ, started, dur)
 	}
 }
 

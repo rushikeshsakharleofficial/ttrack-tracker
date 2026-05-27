@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/term"
 	"ttrack/internal/cast"
 	"ttrack/internal/crypto"
 )
@@ -138,6 +139,12 @@ func List(args []string) error {
 		fmt.Printf("no recordings in %s\n", d)
 		return nil
 	}
+	// Fixed column widths: STATUS(7) + FILE(26) + STARTED(19) + DURATION(9) + separators(8) = 69
+	const fixedW = 69
+	cmdW := termWidth() - fixedW
+	if cmdW < 20 {
+		cmdW = 20
+	}
 	fmt.Printf("%-7s  %-26s  %-19s  %-9s  %s\n", "STATUS", "FILE", "STARTED", "DURATION", "COMMAND")
 	for _, name := range files {
 		p := filepath.Join(d, name)
@@ -148,7 +155,7 @@ func List(args []string) error {
 			status = "ACTIVE"
 			dur += "+"
 		}
-		fmt.Printf("%-7s  %-26s  %-19s  %-9s  %s\n", status, name, started(h), dur, h.Command)
+		fmt.Printf("%-7s  %-26s  %-19s  %-9s  %s\n", status, name, started(h), dur, trunc(h.Command, cmdW))
 	}
 	return nil
 }
@@ -293,6 +300,34 @@ func isActive(name string) bool {
 
 // IsActive is the exported form of isActive for CLI use.
 func IsActive(name string) bool { return isActive(name) }
+
+// termWidth returns the terminal width, or 120 if stdout is not a terminal.
+func termWidth() int {
+	if w, _, err := term.GetSize(int(os.Stdout.Fd())); err == nil && w > 0 {
+		return w
+	}
+	return 120
+}
+
+// trunc truncates s to at most n bytes, appending "…" if trimmed.
+func trunc(s string, n int) string {
+	if n <= 0 {
+		return ""
+	}
+	if len(s) <= n {
+		return s
+	}
+	if n <= 3 {
+		return s[:n]
+	}
+	return s[:n-1] + "…"
+}
+
+// TermWidth is the exported terminal width helper (used by audit and ansible packages).
+func TermWidth() int { return termWidth() }
+
+// Trunc is the exported truncate helper.
+func Trunc(s string, n int) string { return trunc(s, n) }
 
 // AnsibleDir returns the ansible sub-directory for a given user in the
 // central store. Files are named <runid>.ajsonl and encrypted at rest.
