@@ -17,37 +17,59 @@ func main() {
 		os.Exit(2)
 	}
 
-	var err error
-	switch os.Args[1] {
-	case "rec", "record":
-		err = record.Run(os.Args[2:])
-	case "play":
-		err = play.Run(os.Args[2:])
-	case "ls", "list":
-		err = store.List(os.Args[2:])
-	case "ls-user":
-		err = audit.LsUser(os.Args[2:])
-	case "play-user":
-		err = audit.PlayUser(os.Args[2:])
-	case "tail":
-		err = audit.Tail(os.Args[2:])
-	case "tree":
-		err = audit.Tree(os.Args[2:])
-	case "search":
-		err = audit.Search(os.Args[2:])
-	case "export":
-		err = audit.Export(os.Args[2:])
-	case "prune":
-		err = audit.Prune(os.Args[2:])
-	case "completion":
-		err = complete.Script(os.Args[2:])
-	case "__complete":
-		err = complete.Complete(os.Args[2:])
-	case "-h", "--help", "help":
+	cmd := os.Args[1]
+	rest := os.Args[2:]
+
+	// `ttrack help [command]` — overall usage, or one command's help.
+	if cmd == "help" || cmd == "-h" || cmd == "--help" {
+		if len(rest) > 0 {
+			if h, ok := commandHelp(rest[0]); ok {
+				fmt.Print(h)
+				return
+			}
+			fmt.Fprintf(os.Stderr, "ttrack: no help for %q\n\n", rest[0])
+			usage()
+			os.Exit(2)
+		}
 		usage()
 		return
+	}
+	// `ttrack <command> help|-h|--help` — that command's help.
+	if len(rest) > 0 && isHelpToken(rest[0]) {
+		if h, ok := commandHelp(cmd); ok {
+			fmt.Print(h)
+			return
+		}
+	}
+
+	var err error
+	switch cmd {
+	case "rec", "record":
+		err = record.Run(rest)
+	case "play":
+		err = play.Run(rest)
+	case "ls", "list":
+		err = store.List(rest)
+	case "ls-user":
+		err = audit.LsUser(rest)
+	case "play-user":
+		err = audit.PlayUser(rest)
+	case "tail":
+		err = audit.Tail(rest)
+	case "tree":
+		err = audit.Tree(rest)
+	case "search":
+		err = audit.Search(rest)
+	case "export":
+		err = audit.Export(rest)
+	case "prune":
+		err = audit.Prune(rest)
+	case "completion":
+		err = complete.Script(rest)
+	case "__complete":
+		err = complete.Complete(rest)
 	default:
-		fmt.Fprintf(os.Stderr, "ttrack: unknown command %q\n\n", os.Args[1])
+		fmt.Fprintf(os.Stderr, "ttrack: unknown command %q\n\n", cmd)
 		usage()
 		os.Exit(2)
 	}
@@ -56,6 +78,10 @@ func main() {
 		fmt.Fprintln(os.Stderr, "ttrack:", err)
 		os.Exit(1)
 	}
+}
+
+func isHelpToken(s string) bool {
+	return s == "help" || s == "-h" || s == "--help"
 }
 
 func usage() {
@@ -83,5 +109,129 @@ recordings in the central store are encrypted at rest (opaque to cat/strings)
 local recordings: $TTRACK_DIR or ~/.local/share/ttrack
 central store:    $TTRACK_CENTRAL_DIR or /var/lib/ttrack (root:root 0700)
 format: asciinema v2 cast (.cast) — also playable with `+"`asciinema play`"+`
+
+run 'ttrack help <command>' (or 'ttrack <command> --help') for command details
 `)
+}
+
+// commandHelp returns detailed help text for one command. The second result is
+// false for an unknown command.
+func commandHelp(name string) (string, bool) {
+	switch name {
+	case "rec", "record":
+		return `ttrack rec — record a terminal session
+
+usage: ttrack rec [-q] [-o file] [cmd...]
+
+Runs cmd (or $SHELL, default /bin/bash, when none is given) under a PTY and
+records its output as an asciinema v2 cast. Streams to the ttrackd daemon when
+reachable, otherwise writes a user-local file (fail-open).
+
+options:
+  -o file   write the recording to file (implies local, bypasses the daemon)
+  -q        quiet: suppress the banner and saved-path message (also TTRACK_QUIET=1)
+`, true
+	case "play":
+		return `ttrack play — replay a recording
+
+usage: ttrack play [--speed N] [--idle N] <file|id>
+
+Resolves a path, a local 'ttrack ls' id, or — as root — a central-store
+session id (like play-user). Replays with the original timing.
+
+options:
+  --speed N   playback multiplier (default 1.0; >1 faster, <1 slower)
+  --idle N    cap idle gaps to N seconds (default 0 = exact timing);
+              ignored in interactive mode
+
+interactive controls (on a terminal):
+  space pause/resume    left/right or h/l seek 5s    up/down or +/- speed
+  0 restart             q or Ctrl-C quit
+`, true
+	case "ls", "list":
+		return `ttrack ls — list your local recordings
+
+usage: ttrack ls
+
+Lists recordings in $TTRACK_DIR (default ~/.local/share/ttrack).
+Columns: STATUS, FILE, STARTED, DURATION, COMMAND.
+`, true
+	case "ls-user":
+		return `ttrack ls-user — list central-store users or sessions (root)
+
+usage: ttrack ls-user [username]
+
+With no argument, lists users that have recordings and their session counts.
+With a username, lists that user's sessions. Columns: STATUS, TYPE, SESSION,
+STARTED, DURATION, COMMAND. TYPE is interactive or non-interactive.
+`, true
+	case "play-user":
+		return `ttrack play-user — replay any user's session by id (root)
+
+usage: ttrack play-user [--speed N] [--idle N] <sessionid>
+
+Searches all users in the central store for the id. Same options and
+interactive controls as 'ttrack play'.
+`, true
+	case "tail":
+		return `ttrack tail — live-stream an in-progress session (root)
+
+usage: ttrack tail <sessionid>
+
+Streams a running session's output from the daemon as it happens.
+`, true
+	case "tree":
+		return `ttrack tree — central store as a users -> sessions tree (root)
+
+usage: ttrack tree
+
+Each session shows [STATUS TYPE], start time, duration, and command.
+`, true
+	case "search":
+		return `ttrack search — find a string across recordings (root)
+
+usage: ttrack search [--from T] [--to T] [--user U] [-i] [--all] <pattern>
+
+Searches recorded commands and output. Prints the owning user, start time,
+command, and matching output lines.
+
+options:
+  --from T   only sessions started at/after T (YYYY-MM-DD[ HH:MM])
+  --to T     only sessions started at/before T
+  --user U   restrict to one user
+  -i         case-insensitive match
+  --all      list every session (no pattern needed)
+`, true
+	case "export":
+		return `ttrack export — decrypt a session to a plaintext cast (root)
+
+usage: ttrack export [-o file] <sessionid>
+
+Writes a plaintext asciinema v2 cast, playable with 'asciinema play'.
+
+options:
+  -o file   output file (default: stdout)
+`, true
+	case "prune":
+		return `ttrack prune — interactively delete recordings (root)
+
+usage: ttrack prune [--yes]
+
+Shows a storage overview, asks which user(s) and what to delete
+(all / days N / range FROM TO), previews the targets, and confirms.
+Requires the prune password (set on first use). Never deletes active sessions.
+
+options:
+  --yes   skip the final confirmation prompt
+`, true
+	case "completion":
+		return `ttrack completion — print the shell completion script
+
+usage: ttrack completion bash
+
+Install:
+  ttrack completion bash | sudo tee /usr/share/bash-completion/completions/ttrack
+`, true
+	}
+	return "", false
 }

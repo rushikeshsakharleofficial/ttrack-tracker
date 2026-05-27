@@ -1,5 +1,5 @@
 .\" Manpage for ttrack.
-.TH TTRACK 1 "2026-05-27" "ttrack 0.5.1" "User Commands"
+.TH TTRACK 1 "2026-05-27" "ttrack 0.5.2" "User Commands"
 .SH NAME
 ttrack \- record and replay Linux terminal sessions
 .SH SYNOPSIS
@@ -99,9 +99,15 @@ to the current terminal, reproducing the original inter-event timing.
 List recordings in the store directory, showing file name, start time,
 and the recorded command.
 .TP
-.B help
-Print a short usage summary. Same as
-.BR \-h ", " \-\-help .
+.BI "help " "[command]"
+With no argument, print a short usage summary (same as
+.BR \-h ", " \-\-help ).
+With a command name, print that command's detailed help. Equivalently,
+.BI "ttrack " "command"
+.B \-\-help
+(or
+.BR help )
+shows the command's help.
 .SH OPTIONS
 .SS rec options
 .TP

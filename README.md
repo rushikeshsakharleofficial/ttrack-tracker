@@ -136,6 +136,7 @@ With no command, `ttrack rec` records your `$SHELL` interactively until you `exi
 | `ttrack play [--speed N] [--idle N] <file>` | Replay a recording with original timing. Resolves a path, a local `ls` id, or — run as root — a central-store session id (same as `play-user`). |
 | `ttrack ls` | List your local recordings (`STATUS`, `FILE`, `STARTED`, `DURATION`, `COMMAND`). |
 | `ttrack completion bash` | Print the bash completion script. |
+| `ttrack help [command]` | Overall usage, or one command's detailed help. `ttrack <command> --help` (or `help`) works too. |
 
 `rec` flags: `-o <file>` writes a local file at that path; `-q` (or `TTRACK_QUIET=1`) suppresses the recording banner and saved-path message.
 
