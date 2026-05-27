@@ -7,7 +7,7 @@ NFPM ?= $(shell go env GOPATH)/bin/nfpm
 all: build
 
 build:
-	CGO_ENABLED=0 go build -trimpath -o bin/ttrack ./cmd/ttrack
+	CGO_ENABLED=0 go build -trimpath -ldflags "-X main.Version=$(VERSION)" -o bin/ttrack ./cmd/ttrack
 	CGO_ENABLED=0 go build -trimpath -o bin/ttrackd ./cmd/ttrackd
 
 test:

@@ -12,6 +12,9 @@ import (
 	"ttrack/internal/store"
 )
 
+// Version is set at build time via -ldflags "-X main.Version=x.y.z".
+var Version = "dev"
+
 func main() {
 	if len(os.Args) < 2 {
 		usage()
@@ -20,6 +23,11 @@ func main() {
 
 	cmd := os.Args[1]
 	rest := os.Args[2:]
+
+	if cmd == "version" || cmd == "-V" || cmd == "--version" {
+		fmt.Println("ttrack", Version)
+		return
+	}
 
 	// `ttrack help [command]` — overall usage, or one command's help.
 	if cmd == "help" || cmd == "-h" || cmd == "--help" {
@@ -118,6 +126,7 @@ audit commands (read the central root-only store; run as root):
   ttrack ansible incoming [--user U]   show incoming Ansible execs on this host
 
   ttrack completion bash               print the bash completion script
+  ttrack version                       print version
 
 search opts: --from / --to <YYYY-MM-DD[ HH:MM]>, --user <name>, -i
 recordings in the central store are encrypted at rest (opaque to cat/strings)
