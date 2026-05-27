@@ -127,9 +127,16 @@ func renderBar(width int, vt, lastT, speed float64, paused, inGoto bool, gotoBuf
 func drawStatus(vt, lastT, speed float64, paused, inGoto bool, gotoBuf string) (barCol, barW, row int) {
 	w, h := termSize()
 	line, bc, bw := renderBar(w, vt, lastT, speed, paused, inGoto, gotoBuf)
-	// Save cursor, go to the bottom row, clear it, disable autowrap (so a line
-	// that reaches the right edge can't trigger a scroll that duplicates
-	// content), draw, re-enable autowrap, restore cursor.
-	fmt.Fprintf(os.Stdout, "\x1b7\x1b[%d;1H\x1b[2K\x1b[?7l%s\x1b[?7h\x1b8", h, line)
+	// Save cursor; re-assert the scroll region (a recording — e.g. dpkg's
+	// progress bar — may have set its own, which would scroll our reserved row
+	// into the content); go to the bottom row, clear it, disable autowrap (so a
+	// full-width line can't scroll and duplicate content), draw, re-enable
+	// autowrap, restore cursor. Re-setting the region homes the cursor, but the
+	// final restore puts it back, so content placement is unaffected.
+	region := ""
+	if h > 1 {
+		region = fmt.Sprintf("\x1b[1;%dr", h-1)
+	}
+	fmt.Fprintf(os.Stdout, "\x1b7%s\x1b[%d;1H\x1b[2K\x1b[?7l%s\x1b[?7h\x1b8", region, h, line)
 	return bc, bw, h
 }

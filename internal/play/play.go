@@ -330,11 +330,16 @@ func playInteractive(events []cast.Event, speed, maxIdle float64) error {
 	exitList := func(target float64, jump bool) {
 		listMode = false
 		if jump {
-			seek(target)
-		} else {
-			renderTo(vt)
+			if target < 0 {
+				target = 0
+			}
+			if target > lastT {
+				target = lastT
+			}
+			vt = target
 		}
 		anchor = time.Now()
+		renderTo(vt) // always clear the menu and rebuild content to vt
 		drawBar()
 	}
 
