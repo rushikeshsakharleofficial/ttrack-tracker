@@ -49,7 +49,7 @@ pipeline {
                             version="${RELEASE_VERSION}"
 
                             sed -i -E "s/^VERSION [?]= .*/VERSION ?= ${version}/" Makefile
-                            sed -i -E "s/\"ttrack [0-9]+\\.[0-9]+\\.[0-9]+\"/\"ttrack ${version}\"/; s/ttrack [0-9]+\\.[0-9]+\\.[0-9]+/ttrack ${version}/" man/ttrack.1
+                            sed -i -E "s/ttrack [0-9]+[.][0-9]+[.][0-9]+/ttrack ${version}/" man/ttrack.1
                             sed -i -E \
                                 -e "s#releases/download/v[0-9]+[.][0-9]+[.][0-9]+#releases/download/v${version}#g" \
                                 -e "s#ttrack_[0-9]+[.][0-9]+[.][0-9]+#ttrack_${version}#g" \
