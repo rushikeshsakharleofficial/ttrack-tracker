@@ -2,10 +2,10 @@ pipeline {
     agent any
 
     environment {
-        GOROOT = '/usr/local/go'
-        PATH   = "${GOROOT}/bin:${env.PATH}"
-        GOPATH = "${env.WORKSPACE}/.gopath"
-        GOCACHE = "${env.WORKSPACE}/.gocache"
+        GOROOT   = '/usr/local/go'
+        PATH     = "${GOROOT}/bin:${env.PATH}"
+        GOPATH   = "${env.WORKSPACE}/.gopath"
+        GOCACHE  = "${env.WORKSPACE}/.gocache"
         CGO_ENABLED = '0'
     }
 
@@ -90,24 +90,19 @@ pipeline {
                 expression { env.GIT_BRANCH == 'origin/main' || env.BRANCH_NAME == 'main' }
             }
             steps {
-                withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
-                    sh '''
-                        cat > sonar-project.properties << EOF
-sonar.projectKey=ttrack
-sonar.projectName=ttrack
-sonar.sources=.
-sonar.exclusions=build/**,bin/**,vendor/**,*.pb.go,.gopath/**,.gocache/**
-sonar.go.coverage.reportPaths=coverage.out
-EOF
-                        go test ./... -coverprofile=coverage.out 2>/dev/null || true
-                        # Translate container path to host path for Docker bind-mount
-                        HOST_WS=$(echo "$PWD" | sed 's|/var/jenkins_home|/opt/jenkins/data|')
-                        docker run --rm \
-                            -e SONAR_HOST_URL=http://142.44.210.103:9000 \
-                            -e SONAR_TOKEN="$SONAR_TOKEN" \
-                            -v "${HOST_WS}:/usr/src" \
-                            sonarsource/sonar-scanner-cli
-                    '''
+                script {
+                    def scannerHome = tool 'SonarScanner'
+                    withSonarQubeEnv('SonarQube') {
+                        sh """
+                            go test ./... -coverprofile=coverage.out 2>/dev/null || true
+                            ${scannerHome}/bin/sonar-scanner \
+                                -Dsonar.projectKey=ttrack \
+                                -Dsonar.projectName=ttrack \
+                                -Dsonar.sources=. \
+                                -Dsonar.exclusions="build/**,bin/**,vendor/**,*.pb.go,.gopath/**,.gocache/**" \
+                                -Dsonar.go.coverage.reportPaths=coverage.out
+                        """
+                    }
                 }
             }
         }
@@ -119,8 +114,9 @@ EOF
             steps {
                 sshagent(credentials: ['jump-server-key']) {
                     sh '''
-                        scp -o StrictHostKeyChecking=no build/ttrack rushikesh.sakharle@89.167.44.42:/tmp/ttrack
-                        ssh -o StrictHostKeyChecking=no rushikesh.sakharle@89.167.44.42 \
+                        SSH_OPTS="-o StrictHostKeyChecking=no -o BatchMode=yes"
+                        scp $SSH_OPTS build/ttrack rushikesh.sakharle@89.167.44.42:/tmp/ttrack
+                        ssh $SSH_OPTS rushikesh.sakharle@89.167.44.42 \
                             "sudo install -m755 /tmp/ttrack /usr/bin/ttrack && echo deployed"
                     '''
                 }
