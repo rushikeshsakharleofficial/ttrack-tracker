@@ -17,6 +17,35 @@ pipeline {
             }
         }
 
+        stage('Release Version') {
+            steps {
+                script {
+                    env.RELEASE_VERSION = sh(script: '''
+                        set -e
+                        tag=$(git tag --points-at HEAD --list 'v*' |
+                            grep -E '^v[0-9]+[.][0-9]+[.][0-9]+$' |
+                            sort -V | tail -1)
+                        if [ -n "$tag" ]; then
+                            printf '%s\n' "${tag#v}"
+                            exit 0
+                        fi
+
+                        latest=$(git tag --list 'v*' |
+                            grep -E '^v[0-9]+[.][0-9]+[.][0-9]+$' |
+                            sort -V | tail -1)
+                        latest=${latest:-v0.0.0}
+                        version=${latest#v}
+                        major=${version%%.*}
+                        remainder=${version#*.}
+                        minor=${remainder%%.*}
+                        patch=${remainder##*.}
+                        printf '%s.%s.%s\n' "$major" "$minor" "$((patch + 1))"
+                    ''', returnStdout: true).trim()
+                    echo "Release version: v${env.RELEASE_VERSION}"
+                }
+            }
+        }
+
         stage('Format') {
             steps {
                 sh '''
@@ -55,7 +84,7 @@ pipeline {
             steps {
                 sh '''
                     mkdir -p build bin
-                    VERSION=$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo "0.0.0")
+                    VERSION="${RELEASE_VERSION}"
                     go build -ldflags "-X main.Version=${VERSION}" -o build/ttrack  ./cmd/ttrack/
                     go build -o build/ttrackd ./cmd/ttrackd/
                     cp build/ttrack  bin/ttrack
@@ -73,16 +102,19 @@ pipeline {
             steps {
                 sh '''
                     mkdir -p release
+                    rm -f release/*.rpm release/*.deb release/ttrack-*-linux-amd64 release/SHA256SUMS
                     go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
                     NFPM="${GOPATH}/bin/nfpm"
-                    VERSION=$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo "0.0.0")
+                    VERSION="${RELEASE_VERSION}"
                     TTRACK_VERSION="$VERSION" "$NFPM" pkg --config nfpm.yaml --packager rpm --target release/
                     TTRACK_VERSION="$VERSION" "$NFPM" pkg --config nfpm.yaml --packager deb --target release/
+                    cp build/ttrack "release/ttrack-${VERSION}-linux-amd64"
+                    (cd release && sha256sum * > SHA256SUMS)
                 '''
             }
             post {
                 success {
-                    archiveArtifacts artifacts: 'release/*.rpm,release/*.deb', allowEmptyArchive: true, fingerprint: true
+                    archiveArtifacts artifacts: 'release/*', allowEmptyArchive: true, fingerprint: true
                 }
             }
         }
@@ -101,19 +133,18 @@ pipeline {
                             GOBIN="${GOPATH}/bin" go install github.com/cli/cli/v2/cmd/gh@v2.87.3
                         fi
 
-                        version=$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || true)
-                        version=${version:-0.0.0}
+                        version="${RELEASE_VERSION}"
+                        target=$(git rev-parse HEAD)
                         repo="rushikeshsakharleofficial/ttrack-tracker"
                         if "$GH" release view "v${version}" --repo "$repo" >/dev/null 2>&1; then
                             echo "Release v${version} already exists"
                         else
                             "$GH" release create "v${version}" --repo "$repo" \
-                                --title "v${version}" --notes "ttrack ${version}"
+                                --target "$target" --title "v${version}" --notes "ttrack ${version}"
                         fi
-                        for asset in release/*.rpm release/*.deb; do
-                            [ -e "$asset" ] && "$GH" release upload "v${version}" "$asset" \
-                                --repo "$repo" --clobber
-                        done
+                        "$GH" release upload "v${version}" release/*.rpm release/*.deb \
+                            "release/ttrack-${version}-linux-amd64" release/SHA256SUMS \
+                            --repo "$repo" --clobber
                     '''
                 }
             }
