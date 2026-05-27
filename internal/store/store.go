@@ -121,7 +121,7 @@ func NewPath() (string, error) {
 
 // NewName returns an auto-generated cast filename: <timestamp>-<pid>.cast.
 func NewName() string {
-	return fmt.Sprintf("%s-%d.cast", time.Now().Format("20060102T150405"), os.Getpid())
+	return fmt.Sprintf("%s-%d.cast", time.Now().Format("20060102T150405.000000000"), os.Getpid())
 }
 
 // List prints user-local recordings (the personal view).
@@ -191,7 +191,10 @@ func FindCentral(id string) (path, user string, err error) {
 		return "", "", err
 	}
 	for _, u := range users {
-		names, _ := UserSessions(u)
+		names, err := UserSessions(u)
+		if err != nil {
+			continue
+		}
 		for _, n := range names {
 			if strings.TrimSuffix(n, ".cast") == id {
 				return filepath.Join(CentralDir(), u, n), u, nil

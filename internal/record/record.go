@@ -113,6 +113,7 @@ func Run(args []string) error {
 
 	waitErr := cmd.Wait()
 	signal.Stop(winch)
+	close(winch)
 	_ = ptmx.Close() // unblock the reader goroutine
 	wg.Wait()
 	_ = cw.Close()

@@ -3,6 +3,7 @@ package play
 
 import (
 	"bufio"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -62,8 +63,8 @@ func Run(args []string) error {
 }
 
 func fileExists(p string) bool {
-	_, err := os.Stat(p)
-	return err == nil
+	info, err := os.Stat(p)
+	return err == nil && !info.IsDir()
 }
 
 // PlayFile replays the cast at path, transparently decrypting encrypted
@@ -140,7 +141,9 @@ func playLinear(events []cast.Event, speed, maxIdle float64) error {
 			time.Sleep(time.Duration(gap / speed * float64(time.Second)))
 		}
 		if ev.Type == "o" {
-			_, _ = io.WriteString(os.Stdout, ev.Data)
+			if _, err := io.WriteString(os.Stdout, ev.Data); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -192,17 +195,17 @@ func playInteractive(events []cast.Event, speed, maxIdle float64) error {
 	// Keep a SIGTERM handler so `kill` still restores the terminal.
 	sigc := make(chan os.Signal, 1)
 	signal.Notify(sigc, syscall.SIGTERM)
-	defer signal.Stop(sigc)
-	go func() {
-		if _, ok := <-sigc; ok {
-			restore()
-			os.Exit(143)
-		}
+	defer func() {
+		signal.Stop(sigc)
+		close(sigc)
 	}()
 
 	winch := make(chan os.Signal, 1)
 	signal.Notify(winch, syscall.SIGWINCH)
-	defer signal.Stop(winch)
+	defer func() {
+		signal.Stop(winch)
+		close(winch)
+	}()
 
 	evc := make(chan event, 256)
 	go readInput(evc)
@@ -656,6 +659,8 @@ func playInteractive(events []cast.Event, speed, maxIdle float64) error {
 				if !ok || !dispatch(ev) {
 					return nil
 				}
+			case <-sigc:
+				return errors.New("terminated")
 			case <-winch:
 				resize()
 				if listMode {
@@ -695,6 +700,9 @@ func playInteractive(events []cast.Event, speed, maxIdle float64) error {
 			if !listMode && !scrollMode {
 				drawBar()
 			}
+		case <-sigc:
+			timer.Stop()
+			return errors.New("terminated")
 		case <-winch:
 			timer.Stop()
 			resize()

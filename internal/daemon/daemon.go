@@ -36,11 +36,13 @@ type session struct {
 	done bool
 }
 
-func (s *session) write(b []byte) {
+func (s *session) write(b []byte) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.enc != nil {
-		_, _ = s.enc.Write(b) // encrypted to disk
+		if _, err := s.enc.Write(b); err != nil { // encrypted to disk
+			return err
+		}
 	}
 	for c := range s.subs {
 		_ = c.SetWriteDeadline(time.Now().Add(2 * time.Second))
@@ -49,33 +51,48 @@ func (s *session) write(b []byte) {
 			_ = c.Close()
 		}
 	}
+	return nil
 }
 
 func (s *session) addTailer(c net.Conn, path string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	// Replay what has been recorded so far (decrypted), then subscribe to live
 	// plaintext bytes.
 	if rc, err := store.OpenCast(path); err == nil {
-		_, _ = io.Copy(c, rc)
-		rc.Close()
+		_, copyErr := io.Copy(c, rc)
+		closeErr := rc.Close()
+		if copyErr != nil || closeErr != nil {
+			_ = c.Close()
+			return
+		}
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.done {
+		_ = c.Close()
+		return
 	}
 	s.subs[c] = struct{}{}
 }
 
-func (s *session) close() {
+func (s *session) close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.done = true
+	var err error
 	if s.f != nil {
-		_ = s.f.Sync()
-		_ = s.f.Close()
+		if syncErr := s.f.Sync(); syncErr != nil {
+			err = syncErr
+		}
+		if closeErr := s.f.Close(); err == nil && closeErr != nil {
+			err = closeErr
+		}
 		s.f = nil
 	}
 	for c := range s.subs {
 		_ = c.Close()
 		delete(s.subs, c)
 	}
+	return err
 }
 
 type registry struct {
@@ -186,7 +203,7 @@ func handleRec(conn *net.UnixConn, br *bufio.Reader, cred *unix.Ucred, reg *regi
 	}
 	_ = os.Chmod(dir, 0o700)
 
-	id := fmt.Sprintf("%s-%d", time.Now().Format("20060102T150405"), cred.Pid)
+	id := fmt.Sprintf("%s-%d", time.Now().Format("20060102T150405.000000000"), cred.Pid)
 	path := filepath.Join(dir, id+".cast")
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 	if err != nil {
@@ -201,7 +218,9 @@ func handleRec(conn *net.UnixConn, br *bufio.Reader, cred *unix.Ucred, reg *regi
 	sess := &session{f: f, enc: enc, subs: map[net.Conn]struct{}{}}
 	reg.add(id, sess, path)
 	defer func() {
-		sess.close()
+		if err := sess.close(); err != nil {
+			fmt.Fprintf(os.Stderr, "ttrackd: close %s: %v\n", path, err)
+		}
 		reg.remove(id)
 	}()
 
@@ -209,7 +228,10 @@ func handleRec(conn *net.UnixConn, br *bufio.Reader, cred *unix.Ucred, reg *regi
 	for {
 		n, rerr := br.Read(buf)
 		if n > 0 {
-			sess.write(buf[:n])
+			if err := sess.write(buf[:n]); err != nil {
+				fmt.Fprintf(os.Stderr, "ttrackd: write %s: %v\n", path, err)
+				return
+			}
 		}
 		if rerr != nil {
 			return
@@ -442,7 +464,7 @@ func ingestHome(home string, key []byte) {
 // store, encrypting it. The source is opened O_NOFOLLOW and verified to be a
 // regular file, so a user cannot symlink a recording at a root-readable target
 // (e.g. /etc/shadow) and have the root daemon copy it into the central store.
-func copyFile(src, dst string, key []byte) error {
+func copyFile(src, dst string, key []byte) (retErr error) {
 	in, err := os.OpenFile(src, os.O_RDONLY|unix.O_NOFOLLOW, 0)
 	if err != nil {
 		return err // ELOOP if src is a symlink
@@ -459,14 +481,17 @@ func copyFile(src, dst string, key []byte) error {
 	if err != nil {
 		return err
 	}
+	defer func() {
+		if err := out.Close(); retErr == nil && err != nil {
+			retErr = err
+		}
+	}()
 	enc, err := crypto.NewWriter(out, key)
 	if err != nil {
-		out.Close()
 		return err
 	}
 	if _, err := io.Copy(enc, in); err != nil {
-		out.Close()
 		return err
 	}
-	return out.Close()
+	return out.Sync()
 }
