@@ -51,7 +51,7 @@ func LsUser(args []string) error {
 			fmt.Printf("no recorded users in %s\n", store.CentralDir())
 			return nil
 		}
-		cols0 := []store.TableCol{{20}, {8}, {19}}
+		cols0 := []store.TableCol{{Width: 20}, {Width: 8}, {Width: 19}}
 		store.PrintTableHeader(cols0, []string{"USER", "SESSIONS", "LAST ACTIVE"})
 		for _, u := range users {
 			s, _ := store.UserSessions(u)
@@ -82,7 +82,7 @@ func LsUser(args []string) error {
 	if cmdW < 20 {
 		cmdW = 20
 	}
-	cols1 := []store.TableCol{{7}, {11}, {26}, {19}, {9}, {cmdW}}
+	cols1 := []store.TableCol{{Width: 7}, {Width: 11}, {Width: 26}, {Width: 19}, {Width: 9}, {Width: cmdW}}
 	store.PrintTableHeader(cols1, []string{"STATUS", "TYPE", "SESSION", "STARTED", "DURATION", "COMMAND"})
 	for _, name := range sessions {
 		p := centralPath(user, name)

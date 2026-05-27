@@ -145,7 +145,7 @@ func List(args []string) error {
 	if cmdW < 20 {
 		cmdW = 20
 	}
-	cols := []TableCol{{7}, {26}, {19}, {9}, {cmdW}}
+	cols := []TableCol{{Width: 7}, {Width: 26}, {Width: 19}, {Width: 9}, {Width: cmdW}}
 	PrintTableHeader(cols, []string{"STATUS", "FILE", "STARTED", "DURATION", "COMMAND"})
 	for _, name := range files {
 		p := filepath.Join(d, name)
