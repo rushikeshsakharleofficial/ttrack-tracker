@@ -142,15 +142,17 @@ With no command, `ttrack rec` records your `$SHELL` interactively until you `exi
 
 `play` flags: `--speed N` playback multiplier (default `1.0`); `--idle N` caps idle gaps to N seconds — default `0` = **exact original timing** (idle/waits reproduced in full, like a video); set `N`>0 to compress pauses for quick review.
 
-**Interactive controls.** When replaying to a terminal (`play` or `play-user`), playback is controllable live:
+**Interactive controls.** When replaying to a terminal (`play` or `play-user`), a video-player status bar (progress, `MM:SS / MM:SS`, speed) appears while paused and as a brief toast on actions during playback:
 
-| Key | Action |
+| Key / action | Effect |
 |:----|:-------|
-| `space` | Pause / resume |
+| `space` | Pause / resume (shows/hides the bar) |
 | `→` / `l` | Seek forward 5s |
 | `←` / `h` | Seek backward 5s (re-renders the screen up to that point) |
 | `↑` / `+` | Double speed (up to 64×) |
 | `↓` / `-` | Halve speed (down to 1/64×) |
+| `g` | Goto: type `MM:SS` or seconds, Enter to jump (any other key cancels) |
+| click the bar | Seek to that point (Shift+click to select text instead) |
 | `0` | Restart from the beginning |
 | `q` / `Ctrl-C` | Quit |
 

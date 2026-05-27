@@ -63,8 +63,8 @@ func fileExists(p string) bool {
 }
 
 // PlayFile replays the cast at path, transparently decrypting encrypted
-// recordings. On an interactive terminal it offers playback controls
-// (pause, seek, speed); otherwise it plays straight through.
+// recordings. On an interactive terminal it shows a video-player-style status
+// bar with playback controls; otherwise it plays straight through.
 func PlayFile(path string, speed, maxIdle float64) error {
 	if speed <= 0 {
 		speed = 1.0
@@ -81,7 +81,7 @@ func PlayFile(path string, speed, maxIdle float64) error {
 	if _, err := cast.ReadHeader(r); err != nil {
 		return err
 	}
-	events, err := readEvents(r)
+	events, err := readCastEvents(r)
 	if err != nil {
 		return err
 	}
@@ -101,7 +101,7 @@ func PlayFile(path string, speed, maxIdle float64) error {
 	return playInteractive(events, speed, maxIdle)
 }
 
-func readEvents(r *bufio.Reader) ([]cast.Event, error) {
+func readCastEvents(r *bufio.Reader) ([]cast.Event, error) {
 	var events []cast.Event
 	for {
 		ev, err := cast.ReadEvent(r)
@@ -142,9 +142,12 @@ func playLinear(events []cast.Event, speed, maxIdle float64) error {
 	return nil
 }
 
-// playInteractive replays with keyboard controls: space pauses, left/right
-// seek 5s, up/down change speed, q quits. A backward seek re-renders the
-// screen from the start of the recording up to the target time.
+// playInteractive replays with a status bar and keyboard/mouse controls:
+// space pauses (showing the bar), arrows/h/l seek, up/down or +/- change speed,
+// g opens a goto prompt, mouse-click on the bar seeks, q quits. The bar is only
+// shown while paused (and as a brief toast on actions during playback) so it
+// never fights a full-screen recording's own redraws; resuming re-renders the
+// screen from the start up to the current time to wipe the overlay.
 func playInteractive(events []cast.Event, speed, maxIdle float64) error {
 	if speed <= 0 {
 		speed = 1.0
@@ -152,11 +155,22 @@ func playInteractive(events []cast.Event, speed, maxIdle float64) error {
 	fd := int(os.Stdin.Fd())
 	old, err := term.MakeRaw(fd)
 	if err != nil {
-		return playLinear(events, speed, maxIdle)
+		// Can't drive controls without raw mode. Fall back to a straight replay,
+		// keeping the echo-off + drain protection so terminal query responses
+		// don't leak onto the shell prompt.
+		r := beginReplayInput()
+		e := playLinear(events, speed, maxIdle)
+		drainTerminalInput()
+		if r != nil {
+			r()
+		}
+		return e
 	}
 	var once sync.Once
 	restore := func() {
 		once.Do(func() {
+			eraseStatusLine()
+			_, _ = io.WriteString(os.Stdout, mouseDisable)
 			_ = term.Restore(fd, old)
 			_, _ = io.WriteString(os.Stdout, showCursor)
 		})
@@ -175,22 +189,28 @@ func playInteractive(events []cast.Event, speed, maxIdle float64) error {
 		}
 	}()
 
-	cmds := make(chan ctrl, 256)
-	go readKeys(cmds)
+	_, _ = io.WriteString(os.Stdout, mouseEnable)
+
+	evc := make(chan event, 256)
+	go readInput(evc)
 
 	if maxIdle > 0 {
 		fmt.Fprintln(os.Stderr, "ttrack: --idle ignored in interactive replay (use seek)")
 	}
-	fmt.Fprintln(os.Stderr, "\r--- ttrack replay  [space=pause  ←/→=seek 5s  ↑/↓=speed  0=restart  q=quit] ---")
+	fmt.Fprintln(os.Stderr, "\r--- ttrack replay  [space=pause  ←/→=seek  ↑/↓=speed  g=goto  click=seek  q=quit] ---")
 	defer fmt.Fprintln(os.Stderr, "\r\n--- ttrack replay end ---")
 
 	var lastT float64
 	if n := len(events); n > 0 {
 		lastT = events[n-1].Time
 	}
-	idx := 0    // index of the next event to emit
-	vt := 0.0   // virtual playback time (events with Time<=vt already emitted)
+	idx := 0  // index of the next event to emit
+	vt := 0.0 // virtual playback time (events with Time<=vt already emitted)
 	paused := false
+	inGoto := false
+	gotoBuf := ""
+	toastShown := false
+	barCol, barW, barRow := 0, 0, 0
 
 	emitForward := func(target float64) {
 		for idx < len(events) && events[idx].Time <= target {
@@ -200,6 +220,13 @@ func playInteractive(events []cast.Event, speed, maxIdle float64) error {
 			idx++
 		}
 	}
+	// redrawScreen resets the terminal and replays all output up to target, so
+	// the screen is correct for any seek and any overlay is wiped.
+	redrawScreen := func(target float64) {
+		_, _ = io.WriteString(os.Stdout, resetTerm)
+		idx = 0
+		emitForward(target)
+	}
 	seek := func(target float64) {
 		if target < 0 {
 			target = 0
@@ -208,43 +235,133 @@ func playInteractive(events []cast.Event, speed, maxIdle float64) error {
 			target = lastT
 		}
 		if target < vt {
-			// Backward: terminal state is cumulative, so reset and replay all
-			// output from the start up to the target instantly.
-			_, _ = io.WriteString(os.Stdout, resetTerm)
-			idx = 0
+			redrawScreen(target)
+		} else {
+			emitForward(target)
 		}
-		emitForward(target)
 		vt = target
 	}
-	// handle returns false when playback should stop.
-	handle := func(c ctrl) bool {
-		switch c {
-		case ctrlQuit:
+	showBar := func() {
+		barCol, barW, barRow = drawStatus(vt, lastT, speed, paused, inGoto, gotoBuf)
+	}
+	// feedback reflects a control action: redraw the bar while paused, else show
+	// a brief toast that the next emitted event clears.
+	feedback := func() {
+		if paused {
+			showBar()
+		} else {
+			drawStatus(vt, lastT, speed, false, false, "")
+			toastShown = true
+		}
+	}
+	enterPause := func() {
+		paused = true
+		_, _ = io.WriteString(os.Stdout, mouseEnable) // re-assert; replay may have toggled it
+		showBar()
+	}
+	leavePause := func() {
+		paused = false
+		inGoto = false
+		gotoBuf = ""
+		redrawScreen(vt) // wipe the bar, restore content to the current time
+	}
+	commitGoto := func() {
+		if t, ok := parseClock(gotoBuf); ok {
+			seek(t)
+		}
+		inGoto = false
+		gotoBuf = ""
+		showBar()
+	}
+
+	handleByte := func(b byte) bool {
+		if inGoto {
+			switch {
+			case b == 0x0d || b == 0x0a: // Enter
+				commitGoto()
+			case b == 0x7f || b == 0x08: // Backspace
+				if len(gotoBuf) > 0 {
+					gotoBuf = gotoBuf[:len(gotoBuf)-1]
+				}
+				showBar()
+			case (b >= '0' && b <= '9') || b == ':':
+				gotoBuf += string(b)
+				showBar()
+			default: // any other key cancels the goto prompt
+				inGoto = false
+				gotoBuf = ""
+				showBar()
+			}
+			return true
+		}
+		switch b {
+		case 'q', 0x03: // q or Ctrl-C
 			return false
-		case ctrlPause:
-			paused = !paused
-		case ctrlFwd:
-			seek(vt + seekStep)
-		case ctrlBack:
+		case ' ':
+			if paused {
+				leavePause()
+			} else {
+				enterPause()
+			}
+		case 'h':
 			seek(vt - seekStep)
-		case ctrlFaster:
-			if speed < maxSpeed {
-				speed *= 2
-			}
-		case ctrlSlower:
-			if speed > minSpeed {
-				speed /= 2
-			}
-		case ctrlRestart:
+			feedback()
+		case 'l':
+			seek(vt + seekStep)
+			feedback()
+		case '+', '=':
+			speed = faster(speed)
+			feedback()
+		case '-', '_':
+			speed = slower(speed)
+			feedback()
+		case '0':
 			seek(0)
+			feedback()
+		case 'g':
+			if paused {
+				inGoto = true
+				gotoBuf = ""
+				showBar()
+			}
+		}
+		return true
+	}
+
+	dispatch := func(ev event) bool {
+		switch ev.kind {
+		case evMouse:
+			if paused && !inGoto && ev.press && ev.my == barRow && barW > 1 &&
+				ev.mx >= barCol && ev.mx <= barCol+barW-1 {
+				frac := float64(ev.mx-barCol) / float64(barW-1)
+				seek(frac * lastT)
+				showBar()
+			}
+		case evArrow:
+			if inGoto {
+				return true
+			}
+			switch ev.b {
+			case 'C':
+				seek(vt + seekStep)
+			case 'D':
+				seek(vt - seekStep)
+			case 'A':
+				speed = faster(speed)
+			case 'B':
+				speed = slower(speed)
+			}
+			feedback()
+		case evByte:
+			return handleByte(ev.b)
 		}
 		return true
 	}
 
 	for idx < len(events) {
 		if paused {
-			c, ok := <-cmds
-			if !ok || !handle(c) {
+			ev, ok := <-evc
+			if !ok || !dispatch(ev) {
 				return nil
 			}
 			continue
@@ -258,150 +375,27 @@ func playInteractive(events []cast.Event, speed, maxIdle float64) error {
 		start := time.Now()
 		select {
 		case <-timer.C:
+			if toastShown {
+				eraseStatusLine()
+				toastShown = false
+			}
 			vt = next
 			if events[idx].Type == "o" {
 				_, _ = io.WriteString(os.Stdout, events[idx].Data)
 			}
 			idx++
-		case c, ok := <-cmds:
+		case ev, ok := <-evc:
 			timer.Stop()
 			vt += time.Since(start).Seconds() * speed
 			if vt > next {
 				vt = next
 			}
-			if !ok || !handle(c) {
+			if !ok || !dispatch(ev) {
 				return nil
 			}
 		}
 	}
 	return nil
-}
-
-// ctrl is a high-level playback control derived from keyboard input.
-type ctrl int
-
-const (
-	ctrlPause ctrl = iota
-	ctrlQuit
-	ctrlFwd
-	ctrlBack
-	ctrlFaster
-	ctrlSlower
-	ctrlRestart
-)
-
-// readKeys reads stdin and emits playback controls. It runs a small escape
-// parser so that the terminal's own replies to query sequences echoed during
-// replay (Device Attributes, cursor reports, OSC color answers — all
-// ESC-prefixed) are swallowed instead of being mistaken for user keystrokes.
-func readKeys(out chan<- ctrl) {
-	var p keyParser
-	buf := make([]byte, 64)
-	for {
-		n, err := os.Stdin.Read(buf)
-		for i := 0; i < n; i++ {
-			p.feed(buf[i], out)
-		}
-		if err != nil {
-			close(out)
-			return
-		}
-	}
-}
-
-type parseState int
-
-const (
-	stGround parseState = iota
-	stEsc
-	stCSI
-	stSS3
-	stOSC
-	stOSCEsc
-)
-
-// keyParser is a minimal terminal-input state machine. It recognises only the
-// keys ttrack cares about and discards everything else, including complete
-// escape sequences sent by the terminal in response to replayed queries.
-type keyParser struct {
-	state    parseState
-	csiParam bool // CSI carried parameter/intermediate bytes (so it isn't a bare arrow)
-}
-
-func (p *keyParser) feed(b byte, out chan<- ctrl) {
-	switch p.state {
-	case stGround:
-		switch b {
-		case 0x1b:
-			p.state = stEsc
-		case ' ':
-			out <- ctrlPause
-		case 'q', 0x03: // q or Ctrl-C
-			out <- ctrlQuit
-		case 'h':
-			out <- ctrlBack
-		case 'l':
-			out <- ctrlFwd
-		case '+', '=':
-			out <- ctrlFaster
-		case '-', '_':
-			out <- ctrlSlower
-		case '0':
-			out <- ctrlRestart
-		}
-	case stEsc:
-		switch b {
-		case '[':
-			p.state = stCSI
-			p.csiParam = false
-		case 'O': // SS3 — application-keypad arrows (ESC O A..D)
-			p.state = stSS3
-		case ']':
-			p.state = stOSC
-		default:
-			p.state = stGround
-		}
-	case stCSI:
-		if b >= 0x40 && b <= 0x7e { // final byte
-			if !p.csiParam {
-				emitArrow(b, out)
-			}
-			p.state = stGround
-		} else {
-			p.csiParam = true // params/intermediates → not a plain arrow (e.g. a DA/DSR reply)
-		}
-	case stSS3:
-		emitArrow(b, out)
-		p.state = stGround
-	case stOSC:
-		switch b {
-		case 0x07: // BEL terminates OSC
-			p.state = stGround
-		case 0x1b: // possible ST (ESC \)
-			p.state = stOSCEsc
-		}
-	case stOSCEsc:
-		if b == '\\' {
-			p.state = stGround
-		} else {
-			// Back-to-back sequence: the ESC began a new one. Re-dispatch.
-			p.state = stEsc
-			p.feed(b, out)
-		}
-	}
-}
-
-func emitArrow(final byte, out chan<- ctrl) {
-	switch final {
-	case 'A':
-		out <- ctrlFaster // up
-	case 'B':
-		out <- ctrlSlower // down
-	case 'C':
-		out <- ctrlFwd // right
-	case 'D':
-		out <- ctrlBack // left
-	}
 }
 
 // beginReplayInput puts stdin in a no-echo, non-canonical mode (keeping signal

@@ -1,5 +1,5 @@
 .\" Manpage for ttrack.
-.TH TTRACK 1 "2026-05-27" "ttrack 0.5.3" "User Commands"
+.TH TTRACK 1 "2026-05-27" "ttrack 0.6.0" "User Commands"
 .SH NAME
 ttrack \- record and replay Linux terminal sessions
 .SH SYNOPSIS
@@ -147,17 +147,18 @@ When
 .B play
 or
 .B play-user
-replays to a terminal, playback responds to the keyboard. A backward seek
-resets the terminal and re-renders all output up to the target time. Controls
-require a real terminal; when output is piped or redirected, playback runs
-straight through and
+replays to a terminal, a video-player status bar (progress, time, speed) is
+shown while paused and as a brief toast on actions during playback. A backward
+seek resets the terminal and re-renders all output up to the target time.
+Controls require a real terminal; when output is piped or redirected, playback
+runs straight through and
 .B \-\-idle
 applies. In interactive mode
 .B \-\-idle
 is ignored \(em use seek instead.
 .TP
 .B space
-Pause or resume.
+Pause or resume (shows/hides the status bar).
 .TP
 .BR "\(-> " "/ " l
 Seek forward 5 seconds.
@@ -170,6 +171,15 @@ Double the playback speed (up to 64x).
 .TP
 .BR "\(da " "/ " \-
 Halve the playback speed (down to 1/64x).
+.TP
+.B g
+Goto: type a time
+.RB ( MM:SS
+or seconds) and press Enter to jump there; any other key cancels.
+.TP
+.B "mouse click"
+Click the status bar to seek to that point. Shift+click to select text instead
+(mouse reporting otherwise captures the click).
 .TP
 .B 0
 Restart from the beginning.

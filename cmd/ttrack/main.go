@@ -144,9 +144,10 @@ options:
   --idle N    cap idle gaps to N seconds (default 0 = exact timing);
               ignored in interactive mode
 
-interactive controls (on a terminal):
+interactive controls (on a terminal show a video-player status bar):
   space pause/resume    left/right or h/l seek 5s    up/down or +/- speed
-  0 restart             q or Ctrl-C quit
+  g goto (type MM:SS or seconds, Enter)               0 restart
+  click the bar to seek (Shift+click to select text)  q or Ctrl-C quit
 `, true
 	case "ls", "list":
 		return `ttrack ls — list your local recordings
