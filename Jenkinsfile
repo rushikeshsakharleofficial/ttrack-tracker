@@ -52,11 +52,17 @@ pipeline {
 
         stage('Build') {
             steps {
-                sh 'mkdir -p build && go build -o build/ttrack ./cmd/ttrack/'
+                sh '''
+                    mkdir -p build bin
+                    go build -o build/ttrack  ./cmd/ttrack/
+                    go build -o build/ttrackd ./cmd/ttrackd/
+                    cp build/ttrack  bin/ttrack
+                    cp build/ttrackd bin/ttrackd
+                '''
             }
             post {
                 success {
-                    archiveArtifacts artifacts: 'build/ttrack', fingerprint: true
+                    archiveArtifacts artifacts: 'build/ttrack,build/ttrackd', fingerprint: true
                 }
             }
         }
@@ -90,14 +96,16 @@ pipeline {
 sonar.projectKey=ttrack
 sonar.projectName=ttrack
 sonar.sources=.
-sonar.exclusions=build/**,vendor/**,*.pb.go
+sonar.exclusions=build/**,bin/**,vendor/**,*.pb.go,.gopath/**,.gocache/**
 sonar.go.coverage.reportPaths=coverage.out
 EOF
-                        go test ./... -coverprofile=coverage.out ./... 2>/dev/null || true
+                        go test ./... -coverprofile=coverage.out 2>/dev/null || true
+                        # Translate container path to host path for Docker bind-mount
+                        HOST_WS=$(echo "$PWD" | sed 's|/var/jenkins_home|/opt/jenkins/data|')
                         docker run --rm \
                             -e SONAR_HOST_URL=http://142.44.210.103:9000 \
                             -e SONAR_TOKEN="$SONAR_TOKEN" \
-                            -v "$PWD:/usr/src" \
+                            -v "${HOST_WS}:/usr/src" \
                             sonarsource/sonar-scanner-cli
                     '''
                 }
