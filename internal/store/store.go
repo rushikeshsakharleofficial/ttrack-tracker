@@ -291,6 +291,10 @@ func isActive(name string) bool {
 	if i < 0 {
 		return false
 	}
+	started, err := parseNameTime(base[:i])
+	if err != nil {
+		return false
+	}
 	pid, err := strconv.Atoi(base[i+1:])
 	if err != nil {
 		return false
@@ -299,11 +303,72 @@ func isActive(name string) bool {
 	if err != nil {
 		return false
 	}
-	return strings.TrimSpace(string(comm)) == "ttrack"
+	if strings.TrimSpace(string(comm)) != "ttrack" {
+		return false
+	}
+	procStarted, err := procStartTime(pid)
+	if err != nil {
+		return false
+	}
+	// Avoid false ACTIVE states after PID reuse. The recorder process should have
+	// started shortly before the daemon-created session filename timestamp.
+	return !procStarted.After(started.Add(5 * time.Second))
 }
 
 // IsActive is the exported form of isActive for CLI use.
 func IsActive(name string) bool { return isActive(name) }
+
+func parseNameTime(s string) (time.Time, error) {
+	for _, layout := range []string{"20060102T150405.000000000", "20060102T150405"} {
+		if t, err := time.ParseInLocation(layout, s, time.Local); err == nil {
+			return t, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("invalid session timestamp %q", s)
+}
+
+func procStartTime(pid int) (time.Time, error) {
+	stat, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
+	if err != nil {
+		return time.Time{}, err
+	}
+	endComm := strings.LastIndexByte(string(stat), ')')
+	if endComm < 0 || endComm+2 >= len(stat) {
+		return time.Time{}, fmt.Errorf("invalid proc stat for pid %d", pid)
+	}
+	fields := strings.Fields(string(stat[endComm+2:]))
+	if len(fields) <= 19 {
+		return time.Time{}, fmt.Errorf("missing proc start time for pid %d", pid)
+	}
+	startTicks, err := strconv.ParseInt(fields[19], 10, 64)
+	if err != nil {
+		return time.Time{}, err
+	}
+	btime, err := bootTime()
+	if err != nil {
+		return time.Time{}, err
+	}
+	const linuxClockTicks = 100
+	return btime.Add(time.Duration(startTicks) * time.Second / linuxClockTicks), nil
+}
+
+func bootTime() (time.Time, error) {
+	data, err := os.ReadFile("/proc/stat")
+	if err != nil {
+		return time.Time{}, err
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 2 && fields[0] == "btime" {
+			secs, err := strconv.ParseInt(fields[1], 10, 64)
+			if err != nil {
+				return time.Time{}, err
+			}
+			return time.Unix(secs, 0), nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("missing btime in /proc/stat")
+}
 
 // termWidth returns the terminal width, or 120 if stdout is not a terminal.
 func termWidth() int {
