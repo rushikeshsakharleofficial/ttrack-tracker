@@ -482,8 +482,34 @@ func Tail(args []string) error {
 	if _, err := fmt.Fprintf(conn, "TAIL %s\n", args[0]); err != nil {
 		return err
 	}
-	_, err = io.Copy(os.Stdout, conn)
-	return err
+	// The daemon streams an asciinema cast (a header line then [t,"o",data]
+	// event lines). Decode it and write each event's raw output bytes so the
+	// session renders live (colors, progress bars, cursor moves) instead of
+	// dumping the JSON. The first line may be a daemon error.
+	br := bufio.NewReader(conn)
+	if b, _ := br.Peek(3); string(b) == "ERR" {
+		line, _ := br.ReadString('\n')
+		return fmt.Errorf("%s", strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "ERR ")))
+	}
+	if b, _ := br.Peek(1); len(b) == 1 && b[0] == '{' {
+		if _, herr := cast.ReadHeader(br); herr != nil {
+			return herr
+		}
+	}
+	for {
+		ev, rerr := cast.ReadEvent(br)
+		if rerr == io.EOF {
+			return nil
+		}
+		if rerr != nil {
+			return rerr
+		}
+		if ev.Type == "o" {
+			if _, werr := io.WriteString(os.Stdout, ev.Data); werr != nil {
+				return werr
+			}
+		}
+	}
 }
 
 func centralPath(user, name string) string {
