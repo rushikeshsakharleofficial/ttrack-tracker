@@ -1,5 +1,6 @@
 pipeline {
     agent any
+    options { disableConcurrentBuilds() }
 
     environment {
         GOROOT   = '/usr/local/go'
