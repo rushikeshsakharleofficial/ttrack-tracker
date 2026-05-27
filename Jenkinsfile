@@ -42,6 +42,34 @@ pipeline {
                         printf '%s.%s.%s\n' "$major" "$minor" "$((patch + 1))"
                     ''', returnStdout: true).trim()
                     echo "Release version: v${env.RELEASE_VERSION}"
+
+                    withCredentials([string(credentialsId: 'github-release-token', variable: 'GH_TOKEN')]) {
+                        sh '''
+                            set -e
+                            version="${RELEASE_VERSION}"
+
+                            sed -i -E "s/^VERSION \\?= .*/VERSION ?= ${version}/" Makefile
+                            sed -i -E "s/(\"ttrack )[0-9]+[.][0-9]+[.][0-9]+\"/\\1${version}\"/" man/ttrack.1
+                            sed -i -E \
+                                -e "s#(releases/download/v)[0-9]+[.][0-9]+[.][0-9]+#\\1${version}#g" \
+                                -e "s#(ttrack[_-])[0-9]+[.][0-9]+[.][0-9]+#\\1${version}#g" \
+                                README.md
+
+                            if git diff --quiet -- Makefile man/ttrack.1 README.md; then
+                                echo "Versioned source files already match v${version}"
+                                exit 0
+                            fi
+
+                            git config user.name "ttrack Jenkins"
+                            git config user.email "noreply@ttrack.invalid"
+                            git add Makefile man/ttrack.1 README.md
+                            git commit -m "chore: set release version v${version}"
+
+                            set +x
+                            auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\\n')
+                            git -c http.extraHeader="Authorization: Basic ${auth}" push origin HEAD:main
+                        '''
+                    }
                 }
             }
         }
