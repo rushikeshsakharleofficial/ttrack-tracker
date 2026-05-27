@@ -160,7 +160,7 @@ if [ "$CUR_VER" = "$NEW_VER" ]; then
     echo "ttrack $CUR_VER already installed -- skipping"
 else
     echo "upgrading ttrack $CUR_VER -> $NEW_VER"
-    sudo dpkg -i "$DEB" && echo deployed
+    sudo -n dpkg -i "$DEB" && echo deployed
 fi
 '
                     '''
