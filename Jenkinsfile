@@ -116,9 +116,10 @@ pipeline {
                 sshagent(credentials: ['jump-server-key']) {
                     sh '''
                         SSH_OPTS="-o StrictHostKeyChecking=no -o BatchMode=yes"
-                        scp $SSH_OPTS build/ttrack rushikesh.sakharle@89.167.44.42:/tmp/ttrack
+                        DEB=$(ls release/*.deb | head -1)
+                        scp $SSH_OPTS "$DEB" rushikesh.sakharle@89.167.44.42:/tmp/ttrack-latest.deb
                         ssh $SSH_OPTS rushikesh.sakharle@89.167.44.42 \
-                            "sudo install -m755 /tmp/ttrack /usr/bin/ttrack && echo deployed"
+                            "sudo dpkg -i /tmp/ttrack-latest.deb && echo deployed"
                     '''
                 }
             }
