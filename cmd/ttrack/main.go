@@ -113,8 +113,9 @@ audit commands (read the central root-only store; run as root):
   ttrack search [opts] <string>        find a string across recordings
   ttrack export [-o file] <id>         decrypt a session to a plaintext cast
   ttrack prune                         interactively delete recordings (by user/time)
-  ttrack ansible list [--user U]       list Ansible playbook runs
+  ttrack ansible list [--user U]       list Ansible playbook runs (controller-side)
   ttrack ansible show <runid>          show tasks and recap for a run
+  ttrack ansible incoming [--user U]   show incoming Ansible execs on this host
 
   ttrack completion bash               print the bash completion script
 
@@ -252,8 +253,9 @@ Reads Ansible runs recorded by the ttrack callback plugin.
 Runs are stored in the central store under each user's ansible/ directory.
 
 subcommands:
-  list   table of runs: RUN PLAYBOOK CONTROLLER OK CHG FAIL STARTED HOSTS
-  show   full run detail: plays, tasks with status/output, PLAY RECAP
+  list       table of runs: RUN PLAYBOOK CONTROLLER OK CHG FAIL STARTED HOSTS
+  show       full run detail: plays, tasks with status/output, PLAY RECAP
+  incoming   Ansible modules received on this host (SSH ForceCommand captures)
 
 Enable tracking on the Ansible controller:
   export ANSIBLE_CALLBACK_PLUGINS=/usr/share/ttrack/ansible

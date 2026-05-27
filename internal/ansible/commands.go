@@ -299,7 +299,7 @@ func Show(args []string) error {
 // Dispatch handles `ttrack ansible <subcommand> [args...]`.
 func Dispatch(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: ttrack ansible <list|show> [args...]")
+		return fmt.Errorf("usage: ttrack ansible <list|show|incoming> [args...]")
 	}
 	sub := args[0]
 	rest := args[1:]
@@ -308,8 +308,10 @@ func Dispatch(args []string) error {
 		return List(rest)
 	case "show":
 		return Show(rest)
+	case "incoming":
+		return Incoming(rest)
 	default:
-		return fmt.Errorf("ansible: unknown subcommand %q (list|show)", sub)
+		return fmt.Errorf("ansible: unknown subcommand %q (list|show|incoming)", sub)
 	}
 }
 
