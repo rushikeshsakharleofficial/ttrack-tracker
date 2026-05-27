@@ -125,7 +125,7 @@ pipeline {
                         ssh -T $SSH_OPTS rushikesh.sakharle@89.167.44.42 '
 DEB=/tmp/ttrack-latest.deb
 NEW_VER=$(dpkg-deb -f "$DEB" Version)
-CUR_VER=$(dpkg -s ttrack 2>/dev/null | awk "/^Version/{print \$2}")
+CUR_VER=$(dpkg -s ttrack 2>/dev/null | sed -n "s/^Version: //p")
 if [ "$CUR_VER" = "$NEW_VER" ]; then
     echo "ttrack $CUR_VER already installed -- skipping"
 else
