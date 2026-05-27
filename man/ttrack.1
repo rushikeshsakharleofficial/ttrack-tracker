@@ -1,5 +1,5 @@
 .\" Manpage for ttrack.
-.TH TTRACK 1 "2026-05-27" "ttrack 0.8.1" "User Commands"
+.TH TTRACK 1 "2026-05-27" "ttrack 0.8.2" "User Commands"
 .SH NAME
 ttrack \- record and replay Linux terminal sessions
 .SH SYNOPSIS
@@ -188,6 +188,12 @@ to go back. If no commands are detected, opens the type-a-time prompt directly.
 .B "mouse click"
 Click the status bar to seek to that point. Shift+click to select text instead
 (mouse reporting otherwise captures the click).
+.TP
+.B b
+Hide or show the transport bar. Hiding releases the reserved bottom row so the
+recording plays full-height \(em useful for recordings that draw their own
+progress bar (e.g.
+.BR apt / dpkg ).
 .TP
 .B 0
 Restart from the beginning.

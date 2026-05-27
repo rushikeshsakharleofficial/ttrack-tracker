@@ -220,6 +220,7 @@ func playInteractive(events []cast.Event, speed, maxIdle float64) error {
 	inGoto := false
 	gotoBuf := ""
 	listMode := false
+	barHidden := false
 	var chapters []chapter
 	haveChapters := false
 	listSel := 0
@@ -241,6 +242,9 @@ func playInteractive(events []cast.Event, speed, maxIdle float64) error {
 		return d
 	}
 	drawBar := func() {
+		if barHidden {
+			return
+		}
 		barCol, barW, barRow = drawStatus(displayTime(), lastT, speed, paused, inGoto, gotoBuf)
 	}
 	// safeDrawBar heals the bar only when the recording isn't mid save/restore,
@@ -308,8 +312,25 @@ func playInteractive(events []cast.Event, speed, maxIdle float64) error {
 	}
 	resize := func() {
 		_, h = termSize()
-		setRegion(h)
+		if barHidden {
+			_, _ = io.WriteString(os.Stdout, resetRegion)
+		} else {
+			setRegion(h)
+		}
 		renderTo(displayTime())
+	}
+	// toggleBar shows/hides the transport bar. Hiding releases the reserved row
+	// so the recording renders full-height; showing reclaims it.
+	toggleBar := func() {
+		syncClock()
+		barHidden = !barHidden
+		if barHidden {
+			_, _ = io.WriteString(os.Stdout, resetRegion)
+		} else {
+			setRegion(h)
+		}
+		renderTo(vt)
+		drawBar()
 	}
 
 	openGotoList := func() {
@@ -452,6 +473,8 @@ func playInteractive(events []cast.Event, speed, maxIdle float64) error {
 			seek(0)
 		case 'g':
 			openGotoList()
+		case 'b':
+			toggleBar()
 		}
 		return true
 	}
@@ -462,7 +485,7 @@ func playInteractive(events []cast.Event, speed, maxIdle float64) error {
 		}
 		switch ev.kind {
 		case evMouse:
-			if !inGoto && ev.press && ev.my == barRow && barW > 1 &&
+			if !inGoto && !barHidden && ev.press && ev.my == barRow && barW > 1 &&
 				ev.mx >= barCol && ev.mx <= barCol+barW-1 {
 				syncClock()
 				frac := float64(ev.mx-barCol) / float64(barW-1)

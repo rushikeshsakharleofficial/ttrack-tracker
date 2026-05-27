@@ -148,7 +148,8 @@ on a terminal this opens a full-screen player (thin transport bar; holds the
 final frame until you quit). controls:
   space pause/resume    left/right or h/l seek 5s    up/down or +/- speed
   g jump to a recorded command (list; t = type a time)  0 restart
-  click the bar to seek (Shift+click to select text)    q or Ctrl-C quit
+  b hide/show the bar (full-height playback)            q or Ctrl-C quit
+  click the bar to seek (Shift+click to select text)
 `, true
 	case "ls", "list":
 		return `ttrack ls — list your local recordings
