@@ -14,3 +14,7 @@ AGENTS.md
 .aider*
 .windsurfrules
 .github/copilot-instructions.md
+.playwright-mcp/
+build/
+scripts/ansible/__pycache__/
+
