@@ -1,5 +1,6 @@
 <div align="center">
 
+
 # Terminal Session Recorder for Linux — ttrack
 
 Record and replay Linux terminal sessions as asciinema-compatible casts, with an optional root daemon that collects every user's session into a root-only central store for audit.
