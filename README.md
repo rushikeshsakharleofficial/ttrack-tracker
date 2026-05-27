@@ -38,6 +38,7 @@ Record and replay Linux terminal sessions as asciinema-compatible casts, with an
 ## Features
 
 - **Record & replay** any interactive shell session (`script(1)` / `asciinema`-style).
+- **Full-screen player** for replay: a thin-line seek/progress bar, pause, variable speed, jump-to-command (detected from shell prompts), mouse click-to-seek, and a bar toggle for full-height playback.
 - **asciinema v2 cast** output (local recordings are inspectable JSON-lines and play with `asciinema play`; central recordings are encrypted — `export` them first).
 - **Central audit store** via the `ttrackd` root daemon: all users' sessions in `/var/lib/ttrack`, `root:root 0700` — normal users cannot read recordings.
 - **Encrypted at rest** — central recordings are AES-256-GCM encrypted; `cat`/`strings`/`grep` on a `.cast` reveal only ciphertext. Readable solely with the root-only key via `ttrack`.
@@ -72,7 +73,15 @@ audit commands (read the central root-only store; run as root):
 
 search opts: --from / --to <YYYY-MM-DD[ HH:MM]>, --user <name>, -i
 recordings in the central store are encrypted at rest (opaque to cat/strings)
+
+local recordings: $TTRACK_DIR or ~/.local/share/ttrack
+central store:    $TTRACK_CENTRAL_DIR or /var/lib/ttrack (root:root 0700)
+format: asciinema v2 cast (.cast) — also playable with `asciinema play`
+
+run 'ttrack help <command>' (or 'ttrack <command> --help') for command details
 ```
+
+> Run `ttrack help <command>` for detailed per-command help (options and, for `play`, the full list of player controls).
 
 ## Requirements
 
