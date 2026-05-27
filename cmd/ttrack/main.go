@@ -144,7 +144,8 @@ options:
   --idle N    cap idle gaps to N seconds (default 0 = exact timing);
               ignored in interactive mode
 
-interactive controls (on a terminal show a video-player status bar):
+on a terminal this opens a full-screen player (thin transport bar; holds the
+final frame until you quit). controls:
   space pause/resume    left/right or h/l seek 5s    up/down or +/- speed
   g goto (type MM:SS or seconds, Enter)               0 restart
   click the bar to seek (Shift+click to select text)  q or Ctrl-C quit

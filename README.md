@@ -142,13 +142,13 @@ With no command, `ttrack rec` records your `$SHELL` interactively until you `exi
 
 `play` flags: `--speed N` playback multiplier (default `1.0`); `--idle N` caps idle gaps to N seconds — default `0` = **exact original timing** (idle/waits reproduced in full, like a video); set `N`>0 to compress pauses for quick review.
 
-**Interactive controls.** When replaying to a terminal (`play` or `play-user`), a video-player status bar (progress, `MM:SS / MM:SS`, speed) appears while paused and as a brief toast on actions during playback:
+**Player UI.** On a terminal, `play` and `play-user` open a full-screen player (alternate screen) with the recording rendered above a persistent thin-line transport bar showing position, `MM:SS / MM:SS`, and speed. At the end it holds on the final frame until you quit. Controls:
 
 | Key / action | Effect |
 |:----|:-------|
-| `space` | Pause / resume (shows/hides the bar) |
+| `space` | Pause / resume |
 | `→` / `l` | Seek forward 5s |
-| `←` / `h` | Seek backward 5s (re-renders the screen up to that point) |
+| `←` / `h` | Seek backward 5s (re-renders up to that point) |
 | `↑` / `+` | Double speed (up to 64×) |
 | `↓` / `-` | Halve speed (down to 1/64×) |
 | `g` | Goto: type `MM:SS` or seconds, Enter to jump (any other key cancels) |
@@ -156,7 +156,7 @@ With no command, `ttrack rec` records your `$SHELL` interactively until you `exi
 | `0` | Restart from the beginning |
 | `q` / `Ctrl-C` | Quit |
 
-Controls need a real terminal; when output is piped or redirected, `play` runs straight through (and `--idle` still applies). `--idle` is ignored in interactive mode — use seek instead.
+The player is best for line-oriented recordings (shells, package installs); a recording that was itself a full-screen TUI (vim, htop) sets its own scroll region and may briefly fight the transport bar. When output is piped or redirected, `play` runs straight through instead (and `--idle` applies). `--idle` is ignored in the player — use seek.
 
 ### Audit commands (root)
 

@@ -21,11 +21,15 @@ import (
 )
 
 const (
-	showCursor = "\x1b[?25h" // DECTCEM show — replayed TUIs often hide and never restore
-	resetTerm  = "\x1bc"     // RIS — full reset before re-rendering on a backward seek
-	seekStep   = 5.0         // seconds per arrow-key seek
-	maxSpeed   = 64.0
-	minSpeed   = 1.0 / 64
+	hideCursor  = "\x1b[?25l"      // DECTCEM hide
+	showCursor  = "\x1b[?25h"      // DECTCEM show
+	altEnter    = "\x1b[?1049h"    // enter alternate screen (saves prior screen)
+	altExit     = "\x1b[?1049l"    // leave alternate screen (restores prior screen)
+	clearScreen = "\x1b[2J\x1b[H"  // clear and home
+	resetRegion = "\x1b[r"         // clear scroll region
+	seekStep    = 5.0              // seconds per arrow-key seek
+	maxSpeed    = 64.0
+	minSpeed    = 1.0 / 64
 )
 
 // Run replays a session. args is the play subcommand's argv (after "play").
@@ -142,12 +146,11 @@ func playLinear(events []cast.Event, speed, maxIdle float64) error {
 	return nil
 }
 
-// playInteractive replays with a status bar and keyboard/mouse controls:
-// space pauses (showing the bar), arrows/h/l seek, up/down or +/- change speed,
-// g opens a goto prompt, mouse-click on the bar seeks, q quits. The bar is only
-// shown while paused (and as a brief toast on actions during playback) so it
-// never fights a full-screen recording's own redraws; resuming re-renders the
-// screen from the start up to the current time to wipe the overlay.
+// playInteractive replays inside a full-screen player frame: an alternate
+// screen with the recording rendered in a scroll region above a persistent
+// bottom transport bar (progress, time, speed). Controls: space pause/resume,
+// arrows or h/l seek, up/down or +/- speed, g goto prompt, mouse-click the bar
+// to seek, q quit. Playback holds on the final frame at the end until quit.
 func playInteractive(events []cast.Event, speed, maxIdle float64) error {
 	if speed <= 0 {
 		speed = 1.0
@@ -166,13 +169,21 @@ func playInteractive(events []cast.Event, speed, maxIdle float64) error {
 		}
 		return e
 	}
+
+	_, h := termSize()
+	setRegion := func(height int) { fmt.Fprintf(os.Stdout, "\x1b[1;%dr", height-1) }
+
+	// Enter the player frame: alt screen, clear, hide cursor, reserve the bottom
+	// row for the transport bar by confining output to a scroll region above it.
+	_, _ = io.WriteString(os.Stdout, altEnter+clearScreen+hideCursor)
+	setRegion(h)
+	_, _ = io.WriteString(os.Stdout, mouseEnable)
+
 	var once sync.Once
 	restore := func() {
 		once.Do(func() {
-			eraseStatusLine()
-			_, _ = io.WriteString(os.Stdout, mouseDisable)
+			_, _ = io.WriteString(os.Stdout, resetRegion+mouseDisable+altExit+showCursor)
 			_ = term.Restore(fd, old)
-			_, _ = io.WriteString(os.Stdout, showCursor)
 		})
 	}
 	defer restore()
@@ -189,29 +200,40 @@ func playInteractive(events []cast.Event, speed, maxIdle float64) error {
 		}
 	}()
 
-	_, _ = io.WriteString(os.Stdout, mouseEnable)
+	winch := make(chan os.Signal, 1)
+	signal.Notify(winch, syscall.SIGWINCH)
+	defer signal.Stop(winch)
 
 	evc := make(chan event, 256)
 	go readInput(evc)
-
-	if maxIdle > 0 {
-		fmt.Fprintln(os.Stderr, "ttrack: --idle ignored in interactive replay (use seek)")
-	}
-	fmt.Fprintln(os.Stderr, "\r--- ttrack replay  [space=pause  ←/→=seek  ↑/↓=speed  g=goto  click=seek  q=quit] ---")
-	defer fmt.Fprintln(os.Stderr, "\r\n--- ttrack replay end ---")
 
 	var lastT float64
 	if n := len(events); n > 0 {
 		lastT = events[n-1].Time
 	}
-	idx := 0  // index of the next event to emit
-	vt := 0.0 // virtual playback time (events with Time<=vt already emitted)
+	idx := 0            // index of the next event to emit
+	vt := 0.0           // playback time of the last emitted event
+	anchor := time.Now() // wall time vt was last synced to
 	paused := false
 	inGoto := false
 	gotoBuf := ""
-	toastShown := false
-	barCol, barW, barRow := 0, 0, 0
+	barCol, barW, barRow := 0, 0, h
 
+	// displayTime is vt interpolated by wall time while playing, so the clock
+	// advances smoothly (including across long idle gaps) without mutating vt.
+	displayTime := func() float64 {
+		if paused {
+			return vt
+		}
+		d := vt + time.Since(anchor).Seconds()*speed
+		if d > lastT {
+			d = lastT
+		}
+		return d
+	}
+	drawBar := func() {
+		barCol, barW, barRow = drawStatus(displayTime(), lastT, speed, paused, inGoto, gotoBuf)
+	}
 	emitForward := func(target float64) {
 		for idx < len(events) && events[idx].Time <= target {
 			if events[idx].Type == "o" {
@@ -220,12 +242,18 @@ func playInteractive(events []cast.Event, speed, maxIdle float64) error {
 			idx++
 		}
 	}
-	// redrawScreen resets the terminal and replays all output up to target, so
-	// the screen is correct for any seek and any overlay is wiped.
-	redrawScreen := func(target float64) {
-		_, _ = io.WriteString(os.Stdout, resetTerm)
+	// renderTo clears the viewport and replays from the start up to target.
+	// Used for backward seeks and resizes; never RIS (that would exit alt screen).
+	renderTo := func(target float64) {
+		_, _ = io.WriteString(os.Stdout, clearScreen)
 		idx = 0
 		emitForward(target)
+	}
+	syncClock := func() {
+		if !paused {
+			vt = displayTime()
+			anchor = time.Now()
+		}
 	}
 	seek := func(target float64) {
 		if target < 0 {
@@ -235,62 +263,36 @@ func playInteractive(events []cast.Event, speed, maxIdle float64) error {
 			target = lastT
 		}
 		if target < vt {
-			redrawScreen(target)
+			renderTo(target)
 		} else {
 			emitForward(target)
 		}
 		vt = target
+		anchor = time.Now()
 	}
-	showBar := func() {
-		barCol, barW, barRow = drawStatus(vt, lastT, speed, paused, inGoto, gotoBuf)
-	}
-	// feedback reflects a control action: redraw the bar while paused, else show
-	// a brief toast that the next emitted event clears.
-	feedback := func() {
-		if paused {
-			showBar()
-		} else {
-			drawStatus(vt, lastT, speed, false, false, "")
-			toastShown = true
-		}
-	}
-	enterPause := func() {
-		paused = true
-		_, _ = io.WriteString(os.Stdout, mouseEnable) // re-assert; replay may have toggled it
-		showBar()
-	}
-	leavePause := func() {
-		paused = false
-		inGoto = false
-		gotoBuf = ""
-		redrawScreen(vt) // wipe the bar, restore content to the current time
-	}
-	commitGoto := func() {
-		if t, ok := parseClock(gotoBuf); ok {
-			seek(t)
-		}
-		inGoto = false
-		gotoBuf = ""
-		showBar()
+	resize := func() {
+		_, h = termSize()
+		setRegion(h)
+		renderTo(displayTime())
 	}
 
 	handleByte := func(b byte) bool {
 		if inGoto {
 			switch {
 			case b == 0x0d || b == 0x0a: // Enter
-				commitGoto()
+				if t, ok := parseClock(gotoBuf); ok {
+					syncClock()
+					seek(t)
+				}
+				inGoto, gotoBuf = false, ""
 			case b == 0x7f || b == 0x08: // Backspace
 				if len(gotoBuf) > 0 {
 					gotoBuf = gotoBuf[:len(gotoBuf)-1]
 				}
-				showBar()
 			case (b >= '0' && b <= '9') || b == ':':
 				gotoBuf += string(b)
-				showBar()
 			default: // any other key cancels the goto prompt
-				inGoto = false
-				gotoBuf = ""
-				showBar()
+				inGoto, gotoBuf = false, ""
 			}
 			return true
 		}
@@ -299,31 +301,28 @@ func playInteractive(events []cast.Event, speed, maxIdle float64) error {
 			return false
 		case ' ':
 			if paused {
-				leavePause()
+				paused = false
+				anchor = time.Now()
 			} else {
-				enterPause()
+				syncClock()
+				paused = true
 			}
 		case 'h':
+			syncClock()
 			seek(vt - seekStep)
-			feedback()
 		case 'l':
+			syncClock()
 			seek(vt + seekStep)
-			feedback()
 		case '+', '=':
+			syncClock()
 			speed = faster(speed)
-			feedback()
 		case '-', '_':
+			syncClock()
 			speed = slower(speed)
-			feedback()
 		case '0':
 			seek(0)
-			feedback()
 		case 'g':
-			if paused {
-				inGoto = true
-				gotoBuf = ""
-				showBar()
-			}
+			inGoto, gotoBuf = true, ""
 		}
 		return true
 	}
@@ -331,11 +330,11 @@ func playInteractive(events []cast.Event, speed, maxIdle float64) error {
 	dispatch := func(ev event) bool {
 		switch ev.kind {
 		case evMouse:
-			if paused && !inGoto && ev.press && ev.my == barRow && barW > 1 &&
+			if ev.press && ev.my == barRow && barW > 1 &&
 				ev.mx >= barCol && ev.mx <= barCol+barW-1 {
+				syncClock()
 				frac := float64(ev.mx-barCol) / float64(barW-1)
 				seek(frac * lastT)
-				showBar()
 			}
 		case evArrow:
 			if inGoto {
@@ -343,59 +342,78 @@ func playInteractive(events []cast.Event, speed, maxIdle float64) error {
 			}
 			switch ev.b {
 			case 'C':
+				syncClock()
 				seek(vt + seekStep)
 			case 'D':
+				syncClock()
 				seek(vt - seekStep)
 			case 'A':
+				syncClock()
 				speed = faster(speed)
 			case 'B':
+				syncClock()
 				speed = slower(speed)
 			}
-			feedback()
 		case evByte:
 			return handleByte(ev.b)
 		}
 		return true
 	}
 
-	for idx < len(events) {
+	ticker := time.NewTicker(250 * time.Millisecond)
+	defer ticker.Stop()
+
+	drawBar()
+	for {
+		// At the end, hold on the final frame (auto-pause) until the user quits.
+		if !paused && idx >= len(events) {
+			paused = true
+			vt = lastT
+			drawBar()
+		}
 		if paused {
-			ev, ok := <-evc
-			if !ok || !dispatch(ev) {
-				return nil
+			select {
+			case ev, ok := <-evc:
+				if !ok || !dispatch(ev) {
+					return nil
+				}
+			case <-winch:
+				resize()
 			}
+			drawBar()
 			continue
 		}
 		next := events[idx].Time
-		wait := time.Duration((next - vt) / speed * float64(time.Second))
+		fireAt := anchor.Add(time.Duration((next - vt) / speed * float64(time.Second)))
+		wait := time.Until(fireAt)
 		if wait < 0 {
 			wait = 0
 		}
 		timer := time.NewTimer(wait)
-		start := time.Now()
 		select {
 		case <-timer.C:
-			if toastShown {
-				eraseStatusLine()
-				toastShown = false
-			}
 			vt = next
+			anchor = time.Now()
 			if events[idx].Type == "o" {
 				_, _ = io.WriteString(os.Stdout, events[idx].Data)
 			}
 			idx++
+			drawBar() // heal the bar after content
+		case <-ticker.C:
+			timer.Stop()
+			drawBar()
 		case ev, ok := <-evc:
 			timer.Stop()
-			vt += time.Since(start).Seconds() * speed
-			if vt > next {
-				vt = next
-			}
 			if !ok || !dispatch(ev) {
 				return nil
 			}
+			drawBar()
+		case <-winch:
+			timer.Stop()
+			resize()
+			drawBar()
 		}
 	}
-	return nil
 }
 
 // beginReplayInput puts stdin in a no-echo, non-canonical mode (keeping signal

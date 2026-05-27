@@ -99,23 +99,26 @@ func renderBar(width int, vt, lastT, speed float64, paused, inGoto bool, gotoBuf
 		right = fmt.Sprintf(" %3.0f%%  %s   ←/→ seek · g goto · space play · q quit", pct, formatSpeed(speed))
 	}
 
-	barW = width - utf8.RuneCountInString(left) - utf8.RuneCountInString(right) - 2 // 2 for [ ]
+	barW = width - utf8.RuneCountInString(left) - utf8.RuneCountInString(right)
 	if barW < 10 {
 		barW = 10
 	}
 	filled := 0
 	if lastT > 0 {
-		filled = int(float64(barW)*vt/lastT + 0.5)
+		filled = int(float64(barW-1)*vt/lastT + 0.5)
 	}
-	if filled > barW {
-		filled = barW
+	if filled > barW-1 {
+		filled = barW - 1
 	}
 	if filled < 0 {
 		filled = 0
 	}
-	bar := clrGreen + strings.Repeat("█", filled) + clrDim + strings.Repeat("░", barW-filled) + clrReset
-	line = clrBold + left + clrReset + "[" + bar + "]" + clrCyan + right + clrReset
-	barCol = utf8.RuneCountInString(left) + 2 // left, then '[', then first bar cell
+	// Thin-line scrubber: heavy line played, a knob at the head, light line ahead.
+	bar := clrGreen + strings.Repeat("━", filled) + clrReset +
+		clrCyan + "●" + clrReset +
+		clrDim + strings.Repeat("─", barW-filled-1) + clrReset
+	line = clrBold + left + clrReset + bar + clrCyan + right + clrReset
+	barCol = utf8.RuneCountInString(left) + 1 // first bar cell follows the left text
 	return line, barCol, barW
 }
 
@@ -127,10 +130,4 @@ func drawStatus(vt, lastT, speed float64, paused, inGoto bool, gotoBuf string) (
 	// \x1b7 save cursor, move to bottom row, clear line, draw, \x1b8 restore.
 	fmt.Fprintf(os.Stdout, "\x1b7\x1b[%d;1H\x1b[2K%s\x1b8", h, line)
 	return bc, bw, h
-}
-
-// eraseStatusLine clears the bottom row without moving the cursor.
-func eraseStatusLine() {
-	_, h := termSize()
-	fmt.Fprintf(os.Stdout, "\x1b7\x1b[%d;1H\x1b[2K\x1b8", h)
 }

@@ -78,15 +78,18 @@ func TestRenderBarGeometry(t *testing.T) {
 	if barW < 10 {
 		t.Errorf("barW = %d, want >= 10", barW)
 	}
-	// The first bar cell sits just after the left text and the '['.
-	if barCol < 3 {
-		t.Errorf("barCol = %d, want >= 3", barCol)
+	// The first bar cell sits just after the left text.
+	if barCol < 2 {
+		t.Errorf("barCol = %d, want >= 2", barCol)
 	}
-	// Filled portion should be about a quarter (30/120) of the bar.
-	filled := strings.Count(line, "█")
-	wantFilled := int(float64(barW)*0.25 + 0.5)
+	// Played portion (heavy line) should be about a quarter (30/120) of the bar.
+	filled := strings.Count(line, "━")
+	wantFilled := int(float64(barW-1)*0.25 + 0.5)
 	if filled != wantFilled {
 		t.Errorf("filled=%d want %d (barW=%d)", filled, wantFilled, barW)
+	}
+	if !strings.Contains(line, "●") {
+		t.Errorf("bar missing position knob: %q", line)
 	}
 	// Visible width should not exceed the terminal width.
 	if vl := visibleLen(line); vl > width {
