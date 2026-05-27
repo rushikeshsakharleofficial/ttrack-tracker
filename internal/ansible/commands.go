@@ -51,9 +51,13 @@ func ansibleDir(user string) string {
 	return filepath.Join(store.CentralDir(), user, "ansible")
 }
 
-// listRuns returns all .ajsonl run-ids for a user, newest first.
-func listRuns(user string) ([]string, error) {
-	dir := ansibleDir(user)
+// localAnsibleDir returns the user-local ansible dir (fail-open fallback path).
+func localAnsibleDir() string {
+	return filepath.Join(store.Dir(), "ansible")
+}
+
+// scanDir returns .ajsonl run-ids from dir, newest first.
+func scanDir(dir string) ([]string, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -71,10 +75,24 @@ func listRuns(user string) ([]string, error) {
 	return ids, nil
 }
 
-// openRun opens and decrypts (if needed) an .ajsonl file.
+// listRuns returns all .ajsonl run-ids for a user from the central store.
+func listRuns(user string) ([]string, error) { return scanDir(ansibleDir(user)) }
+
+// openRun opens and decrypts (if needed) a central-store .ajsonl file.
 func openRun(user, id string) (*Run, error) {
 	path := filepath.Join(ansibleDir(user), id+".ajsonl")
-	rc, err := store.OpenCast(path) // reuses the magic-prefix decrypt path
+	rc, err := store.OpenCast(path)
+	if err != nil {
+		return nil, err
+	}
+	defer rc.Close()
+	return ParseRun(rc)
+}
+
+// openLocalRun opens an .ajsonl from the user-local fallback dir (no decrypt).
+func openLocalRun(id string) (*Run, error) {
+	path := filepath.Join(localAnsibleDir(), id+".ajsonl")
+	rc, err := store.OpenCast(path)
 	if err != nil {
 		return nil, err
 	}
@@ -90,6 +108,8 @@ func List(args []string) error {
 		return err
 	}
 
+	// localOnly: true when central store inaccessible (not root / not installed)
+	localOnly := false
 	var users []string
 	if *userFlag != "" {
 		users = []string{*userFlag}
@@ -97,15 +117,35 @@ func List(args []string) error {
 		u, err := store.Users()
 		if err != nil {
 			if os.IsPermission(err) || os.IsNotExist(err) {
-				return fmt.Errorf("cannot read %s (run as root): %v", store.CentralDir(), err)
+				localOnly = true
+			} else {
+				return err
 			}
-			return err
+		} else {
+			users = u
 		}
-		users = u
 	}
 
 	fmt.Printf("%-28s  %-20s  %-10s  %-6s %-6s %-6s  %-19s  %s\n",
 		"RUN", "PLAYBOOK", "CONTROLLER", "OK", "CHG", "FAIL", "STARTED", "HOSTS")
+
+	// Local fallback: show runs from ~/.local/share/ttrack/ansible/.
+	if localOnly {
+		ids, _ := scanDir(localAnsibleDir())
+		if len(ids) == 0 {
+			fmt.Printf("no ansible runs in %s\n", localAnsibleDir())
+			return nil
+		}
+		for _, id := range ids {
+			run, err := openLocalRun(id)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "ttrack: %s: %v\n", id, err)
+				continue
+			}
+			printRunRow(run, id)
+		}
+		return nil
+	}
 
 	for _, u := range users {
 		ids, err := listRuns(u)
@@ -119,29 +159,34 @@ func List(args []string) error {
 				fmt.Fprintf(os.Stderr, "ttrack: %s/%s: %v\n", u, id, err)
 				continue
 			}
-			started := "?"
-			if !run.Started.IsZero() {
-				started = run.Started.Format("2006-01-02 15:04:05")
-			}
-			playbook := run.Playbook
-			if len(playbook) > 20 {
-				playbook = "…" + playbook[len(playbook)-19:]
-			}
-			ctrl := run.Controller
-			if len(ctrl) > 10 {
-				ctrl = ctrl[:9] + "…"
-			}
-			hosts := strings.Join(run.Hosts, ",")
-			if len(hosts) > 20 {
-				hosts = hosts[:19] + "…"
-			}
-			fmt.Printf("%-28s  %-20s  %-10s  %-6d %-6d %-6d  %-19s  %s\n",
-				id, playbook, ctrl,
-				run.TotalOK, run.TotalChanged, run.TotalFailed,
-				started, hosts)
+			printRunRow(run, id)
 		}
 	}
 	return nil
+}
+
+// printRunRow prints one run as a table row.
+func printRunRow(run *Run, id string) {
+	started := "?"
+	if !run.Started.IsZero() {
+		started = run.Started.Format("2006-01-02 15:04:05")
+	}
+	playbook := run.Playbook
+	if len(playbook) > 20 {
+		playbook = "…" + playbook[len(playbook)-19:]
+	}
+	ctrl := run.Controller
+	if len(ctrl) > 10 {
+		ctrl = ctrl[:9] + "…"
+	}
+	hosts := strings.Join(run.Hosts, ",")
+	if len(hosts) > 20 {
+		hosts = hosts[:19] + "…"
+	}
+	fmt.Printf("%-28s  %-20s  %-10s  %-6d %-6d %-6d  %-19s  %s\n",
+		id, playbook, ctrl,
+		run.TotalOK, run.TotalChanged, run.TotalFailed,
+		started, hosts)
 }
 
 // Show implements `ttrack ansible show <runid>`.
@@ -168,20 +213,27 @@ func Show(args []string) error {
 		foundUser = *userFlag
 	} else {
 		users, err := store.Users()
-		if err != nil {
-			return fmt.Errorf("cannot read %s (run as root): %w", store.CentralDir(), err)
-		}
-		for _, u := range users {
-			r, err := openRun(u, runID)
-			if err == nil {
-				run = r
-				foundUser = u
-				break
+		if err == nil {
+			for _, u := range users {
+				r, err := openRun(u, runID)
+				if err == nil {
+					run = r
+					foundUser = u
+					break
+				}
 			}
+		}
+		// central store inaccessible or run not found — fall through to local
+	}
+	// Fall back to local dir when not found (or not accessible) in central store.
+	if run == nil {
+		if r, err := openLocalRun(runID); err == nil {
+			run = r
+			foundUser = "(local)"
 		}
 	}
 	if run == nil {
-		return fmt.Errorf("run %s not found in central store", runID)
+		return fmt.Errorf("run %s not found in central store or local dir", runID)
 	}
 
 	// Header.
