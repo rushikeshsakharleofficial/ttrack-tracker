@@ -151,7 +151,7 @@ With no command, `ttrack rec` records your `$SHELL` interactively until you `exi
 | `←` / `h` | Seek backward 5s (re-renders up to that point) |
 | `↑` / `+` | Double speed (up to 64×) |
 | `↓` / `-` | Halve speed (down to 1/64×) |
-| `g` | Goto: type `MM:SS` or seconds, Enter to jump (any other key cancels) |
+| `g` | Jump to a recorded command — opens a list of commands found in the session (detected from shell prompts) with timestamps; ↑/↓ select, Enter jumps, `t` types a time, `q` back. Falls back to time entry if none detected. |
 | click the bar | Seek to that point (Shift+click to select text instead) |
 | `0` | Restart from the beginning |
 | `q` / `Ctrl-C` | Quit |

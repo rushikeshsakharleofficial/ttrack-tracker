@@ -1,5 +1,5 @@
 .\" Manpage for ttrack.
-.TH TTRACK 1 "2026-05-27" "ttrack 0.7.0" "User Commands"
+.TH TTRACK 1 "2026-05-27" "ttrack 0.8.0" "User Commands"
 .SH NAME
 ttrack \- record and replay Linux terminal sessions
 .SH SYNOPSIS
@@ -175,9 +175,15 @@ Double the playback speed (up to 64x).
 Halve the playback speed (down to 1/64x).
 .TP
 .B g
-Goto: type a time
+Jump to a recorded command: opens a list of commands detected in the session
+(by their shell prompts) with timestamps; select one and press Enter to jump.
+Press
+.B t
+to type a time
 .RB ( MM:SS
-or seconds) and press Enter to jump there; any other key cancels.
+or seconds) instead, or
+.B q
+to go back. If no commands are detected, opens the type-a-time prompt directly.
 .TP
 .B "mouse click"
 Click the status bar to seek to that point. Shift+click to select text instead

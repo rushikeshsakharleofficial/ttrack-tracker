@@ -211,18 +211,27 @@ func playInteractive(events []cast.Event, speed, maxIdle float64) error {
 	if n := len(events); n > 0 {
 		lastT = events[n-1].Time
 	}
-	idx := 0            // index of the next event to emit
-	vt := 0.0           // playback time of the last emitted event
+	idx := 0             // index of the next event to emit
+	vt := 0.0            // playback time of the last emitted event
 	anchor := time.Now() // wall time vt was last synced to
+	saveDepth := 0       // recording's open DECSC (\x1b7) count; bar heal waits for 0
+	var saveOpenedAt time.Time // when saveDepth last went positive (heal decay)
 	paused := false
 	inGoto := false
 	gotoBuf := ""
+	listMode := false
+	var chapters []chapter
+	haveChapters := false
+	listSel := 0
 	barCol, barW, barRow := 0, 0, h
+
+	// frozen reports whether playback is held (any modal/paused state).
+	frozen := func() bool { return paused || inGoto || listMode }
 
 	// displayTime is vt interpolated by wall time while playing, so the clock
 	// advances smoothly (including across long idle gaps) without mutating vt.
 	displayTime := func() float64 {
-		if paused {
+		if frozen() {
 			return vt
 		}
 		d := vt + time.Since(anchor).Seconds()*speed
@@ -234,26 +243,53 @@ func playInteractive(events []cast.Event, speed, maxIdle float64) error {
 	drawBar := func() {
 		barCol, barW, barRow = drawStatus(displayTime(), lastT, speed, paused, inGoto, gotoBuf)
 	}
+	// safeDrawBar heals the bar only when the recording isn't mid save/restore,
+	// so our cursor save/restore can't corrupt the recording's own (which can
+	// span events, e.g. apt progress bars). A stale open save (truncated cast,
+	// mismatched \x1b7) decays after 500ms so the clock can't freeze forever.
+	safeDrawBar := func() {
+		if saveDepth <= 0 || time.Since(saveOpenedAt) >= 500*time.Millisecond {
+			drawBar()
+		}
+	}
+	emit := func(data string) {
+		_, _ = io.WriteString(os.Stdout, data)
+		d, reset := saveDelta(data)
+		if reset { // RIS in the stream clears the save slot
+			saveDepth = 0
+			return
+		}
+		prev := saveDepth
+		saveDepth += d
+		if saveDepth < 0 {
+			saveDepth = 0
+		}
+		if prev == 0 && saveDepth > 0 {
+			saveOpenedAt = time.Now()
+		}
+	}
 	emitForward := func(target float64) {
 		for idx < len(events) && events[idx].Time <= target {
 			if events[idx].Type == "o" {
-				_, _ = io.WriteString(os.Stdout, events[idx].Data)
+				emit(events[idx].Data)
 			}
 			idx++
 		}
 	}
 	// renderTo clears the viewport and replays from the start up to target.
-	// Used for backward seeks and resizes; never RIS (that would exit alt screen).
+	// Used for backward seeks, resizes, and exiting overlays; never RIS (that
+	// would drop the alt screen and scroll region).
 	renderTo := func(target float64) {
 		_, _ = io.WriteString(os.Stdout, clearScreen)
+		saveDepth = 0
 		idx = 0
 		emitForward(target)
 	}
 	syncClock := func() {
-		if !paused {
+		if !frozen() {
 			vt = displayTime()
-			anchor = time.Now()
 		}
+		anchor = time.Now()
 	}
 	seek := func(target float64) {
 		if target < 0 {
@@ -276,15 +312,102 @@ func playInteractive(events []cast.Event, speed, maxIdle float64) error {
 		renderTo(displayTime())
 	}
 
+	openGotoList := func() {
+		if !haveChapters {
+			chapters = buildChapters(events)
+			haveChapters = true
+		}
+		syncClock()
+		if len(chapters) == 0 {
+			inGoto, gotoBuf = true, "" // no commands detected; fall back to time entry
+			return
+		}
+		listMode = true
+		listSel = chapterAt(chapters, vt)
+		w, hh := termSize()
+		drawChapterList(chapters, listSel, w, hh)
+	}
+	exitList := func(target float64, jump bool) {
+		listMode = false
+		if jump {
+			seek(target)
+		} else {
+			renderTo(vt)
+		}
+		anchor = time.Now()
+		drawBar()
+	}
+
+	dispatchList := func(ev event) bool {
+		redraw := func() {
+			w, hh := termSize()
+			drawChapterList(chapters, listSel, w, hh)
+		}
+		switch ev.kind {
+		case evMouse:
+			if ev.press {
+				_, hh := termSize()
+				rows := hh - 2
+				if rows < 1 {
+					rows = 1
+				}
+				top := 0
+				if listSel >= rows {
+					top = listSel - rows + 1
+				}
+				if i := top + (ev.my - 2); ev.my >= 2 && i >= 0 && i < len(chapters) {
+					listSel = i
+					exitList(chapters[listSel].t, true) // single click jumps
+				}
+			}
+		case evArrow:
+			switch ev.b {
+			case 'A':
+				if listSel > 0 {
+					listSel--
+				}
+				redraw()
+			case 'B':
+				if listSel < len(chapters)-1 {
+					listSel++
+				}
+				redraw()
+			}
+		case evByte:
+			switch ev.b {
+			case 'k':
+				if listSel > 0 {
+					listSel--
+				}
+				redraw()
+			case 'j':
+				if listSel < len(chapters)-1 {
+					listSel++
+				}
+				redraw()
+			case 0x0d, 0x0a: // Enter — jump to the selected command
+				exitList(chapters[listSel].t, true)
+			case 't': // switch to manual time entry
+				listMode = false
+				inGoto, gotoBuf = true, ""
+				renderTo(vt)
+				drawBar()
+			case 'q', 0x03: // back to the player
+				exitList(0, false)
+			}
+		}
+		return true
+	}
+
 	handleByte := func(b byte) bool {
 		if inGoto {
 			switch {
 			case b == 0x0d || b == 0x0a: // Enter
 				if t, ok := parseClock(gotoBuf); ok {
-					syncClock()
 					seek(t)
 				}
 				inGoto, gotoBuf = false, ""
+				anchor = time.Now()
 			case b == 0x7f || b == 0x08: // Backspace
 				if len(gotoBuf) > 0 {
 					gotoBuf = gotoBuf[:len(gotoBuf)-1]
@@ -293,6 +416,7 @@ func playInteractive(events []cast.Event, speed, maxIdle float64) error {
 				gotoBuf += string(b)
 			default: // any other key cancels the goto prompt
 				inGoto, gotoBuf = false, ""
+				anchor = time.Now()
 			}
 			return true
 		}
@@ -322,15 +446,18 @@ func playInteractive(events []cast.Event, speed, maxIdle float64) error {
 		case '0':
 			seek(0)
 		case 'g':
-			inGoto, gotoBuf = true, ""
+			openGotoList()
 		}
 		return true
 	}
 
 	dispatch := func(ev event) bool {
+		if listMode {
+			return dispatchList(ev)
+		}
 		switch ev.kind {
 		case evMouse:
-			if ev.press && ev.my == barRow && barW > 1 &&
+			if !inGoto && ev.press && ev.my == barRow && barW > 1 &&
 				ev.mx >= barCol && ev.mx <= barCol+barW-1 {
 				syncClock()
 				frac := float64(ev.mx-barCol) / float64(barW-1)
@@ -366,12 +493,12 @@ func playInteractive(events []cast.Event, speed, maxIdle float64) error {
 	drawBar()
 	for {
 		// At the end, hold on the final frame (auto-pause) until the user quits.
-		if !paused && idx >= len(events) {
+		if !frozen() && idx >= len(events) {
 			paused = true
 			vt = lastT
 			drawBar()
 		}
-		if paused {
+		if frozen() {
 			select {
 			case ev, ok := <-evc:
 				if !ok || !dispatch(ev) {
@@ -379,8 +506,14 @@ func playInteractive(events []cast.Event, speed, maxIdle float64) error {
 				}
 			case <-winch:
 				resize()
+				if listMode {
+					w, hh := termSize()
+					drawChapterList(chapters, listSel, w, hh)
+				}
 			}
-			drawBar()
+			if !listMode {
+				drawBar()
+			}
 			continue
 		}
 		next := events[idx].Time
@@ -395,25 +528,47 @@ func playInteractive(events []cast.Event, speed, maxIdle float64) error {
 			vt = next
 			anchor = time.Now()
 			if events[idx].Type == "o" {
-				_, _ = io.WriteString(os.Stdout, events[idx].Data)
+				emit(events[idx].Data)
 			}
 			idx++
-			drawBar() // heal the bar after content
+			safeDrawBar() // heal the bar after content (when not mid save/restore)
 		case <-ticker.C:
 			timer.Stop()
-			drawBar()
+			safeDrawBar()
 		case ev, ok := <-evc:
 			timer.Stop()
 			if !ok || !dispatch(ev) {
 				return nil
 			}
-			drawBar()
+			if !listMode {
+				drawBar()
+			}
 		case <-winch:
 			timer.Stop()
 			resize()
 			drawBar()
 		}
 	}
+}
+
+// saveDelta returns the net change in open cursor-save (DECSC \x1b7 / DECRC
+// \x1b8) depth contained in data. Recordings sometimes split a save/restore
+// pair across events; tracking the depth lets the bar avoid drawing between
+// them (its own save/restore would otherwise clobber the recording's).
+func saveDelta(s string) (delta int, reset bool) {
+	for i := 0; i+1 < len(s); i++ {
+		if s[i] == 0x1b {
+			switch s[i+1] {
+			case '7': // DECSC
+				delta++
+			case '8': // DECRC
+				delta--
+			case 'c': // RIS clears the save slot
+				delta, reset = 0, true
+			}
+		}
+	}
+	return delta, reset
 }
 
 // beginReplayInput puts stdin in a no-echo, non-canonical mode (keeping signal

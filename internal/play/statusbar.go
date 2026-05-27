@@ -127,7 +127,9 @@ func renderBar(width int, vt, lastT, speed float64, paused, inGoto bool, gotoBuf
 func drawStatus(vt, lastT, speed float64, paused, inGoto bool, gotoBuf string) (barCol, barW, row int) {
 	w, h := termSize()
 	line, bc, bw := renderBar(w, vt, lastT, speed, paused, inGoto, gotoBuf)
-	// \x1b7 save cursor, move to bottom row, clear line, draw, \x1b8 restore.
-	fmt.Fprintf(os.Stdout, "\x1b7\x1b[%d;1H\x1b[2K%s\x1b8", h, line)
+	// Save cursor, go to the bottom row, clear it, disable autowrap (so a line
+	// that reaches the right edge can't trigger a scroll that duplicates
+	// content), draw, re-enable autowrap, restore cursor.
+	fmt.Fprintf(os.Stdout, "\x1b7\x1b[%d;1H\x1b[2K\x1b[?7l%s\x1b[?7h\x1b8", h, line)
 	return bc, bw, h
 }
