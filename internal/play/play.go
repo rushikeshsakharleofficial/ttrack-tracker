@@ -226,8 +226,13 @@ func playInteractive(events []cast.Event, speed, maxIdle float64) error {
 	listSel := 0
 	barCol, barW, barRow := 0, 0, h
 
+	// Scrollback state.
+	var scrollBuf lineBuf
+	scrollMode := false
+	scrollOffset := 0
+
 	// frozen reports whether playback is held (any modal/paused state).
-	frozen := func() bool { return paused || inGoto || listMode }
+	frozen := func() bool { return paused || inGoto || listMode || scrollMode }
 
 	// displayTime is vt interpolated by wall time while playing, so the clock
 	// advances smoothly (including across long idle gaps) without mutating vt.
@@ -258,6 +263,7 @@ func playInteractive(events []cast.Event, speed, maxIdle float64) error {
 	}
 	emit := func(data string) {
 		_, _ = io.WriteString(os.Stdout, data)
+		scrollBuf.feed(data)
 		d, reset := saveDelta(data)
 		if reset { // RIS in the stream clears the save slot
 			saveDepth = 0
@@ -282,11 +288,13 @@ func playInteractive(events []cast.Event, speed, maxIdle float64) error {
 	}
 	// renderTo clears the viewport and replays from the start up to target.
 	// Used for backward seeks, resizes, and exiting overlays; never RIS (that
-	// would drop the alt screen and scroll region).
+	// would drop the alt screen and scroll region). Resets the scrollback buffer
+	// so it matches the replayed output.
 	renderTo := func(target float64) {
 		_, _ = io.WriteString(os.Stdout, clearScreen)
 		saveDepth = 0
 		idx = 0
+		scrollBuf = lineBuf{}
 		emitForward(target)
 	}
 	syncClock := func() {
@@ -310,8 +318,104 @@ func playInteractive(events []cast.Event, speed, maxIdle float64) error {
 		vt = target
 		anchor = time.Now()
 	}
+	// drawScrollView renders the scrollback buffer in the viewport. Resets the
+	// scroll region to full-screen, clears, prints buffered lines, then draws the
+	// scroll indicator at the bottom row. drawBar is NOT called here; exitScroll
+	// calls it after restoring the scroll region.
+	drawScrollView := func() {
+		w, hh := termSize()
+		contentH := hh - 1 // reserve 1 row for scroll indicator
+		if contentH < 1 {
+			contentH = 1
+		}
+		total := len(scrollBuf.lines)
+
+		end := total - scrollOffset
+		if end > total {
+			end = total
+		}
+		if end < 0 {
+			end = 0
+		}
+		start := end - contentH
+		if start < 0 {
+			start = 0
+		}
+
+		_, _ = io.WriteString(os.Stdout, resetRegion+clearScreen)
+		for i := start; i < end; i++ {
+			line := scrollBuf.lines[i]
+			if visWidth(line) > w {
+				line = truncLine(line, w)
+			}
+			fmt.Fprint(os.Stdout, line+"\r\n")
+		}
+		drawScrollBar(total, scrollOffset, hh)
+	}
+
+	enterScroll := func() {
+		if scrollMode {
+			return
+		}
+		syncClock()
+		paused = true
+		scrollMode = true
+		scrollOffset = 0
+		drawScrollView()
+	}
+
+	exitScroll := func() {
+		scrollMode = false
+		setRegion(h)
+		renderTo(vt)
+		drawBar()
+	}
+
+	scrollUp := func() {
+		if !scrollMode {
+			enterScroll()
+			return
+		}
+		_, hh := termSize()
+		contentH := hh - 1
+		if contentH < 1 {
+			contentH = 1
+		}
+		total := len(scrollBuf.lines)
+		maxOff := total - contentH
+		if maxOff < 0 {
+			maxOff = 0
+		}
+		newOff := scrollOffset + scrollStep
+		if newOff > maxOff {
+			newOff = maxOff
+		}
+		scrollOffset = newOff
+		drawScrollView()
+	}
+
+	scrollDown := func() {
+		if !scrollMode {
+			return
+		}
+		newOff := scrollOffset - scrollStep
+		if newOff < 0 {
+			newOff = 0
+		}
+		scrollOffset = newOff
+		if scrollOffset == 0 {
+			exitScroll()
+			return
+		}
+		drawScrollView()
+	}
+
 	resize := func() {
 		_, h = termSize()
+		if scrollMode {
+			drawScrollView()
+			return
+		}
 		if barHidden {
 			_, _ = io.WriteString(os.Stdout, resetRegion)
 		} else {
@@ -483,7 +587,27 @@ func playInteractive(events []cast.Event, speed, maxIdle float64) error {
 		if listMode {
 			return dispatchList(ev)
 		}
+		// Scroll mode: scroll keys navigate; any other key exits scroll mode.
+		if scrollMode {
+			switch ev.kind {
+			case evScroll:
+				if ev.up {
+					scrollUp()
+				} else {
+					scrollDown()
+				}
+			default:
+				exitScroll()
+			}
+			return true
+		}
 		switch ev.kind {
+		case evScroll:
+			if ev.up {
+				scrollUp()
+			} else {
+				scrollDown()
+			}
 		case evMouse:
 			if !inGoto && !barHidden && ev.press && ev.my == barRow && barW > 1 &&
 				ev.mx >= barCol && ev.mx <= barCol+barW-1 {
@@ -539,7 +663,7 @@ func playInteractive(events []cast.Event, speed, maxIdle float64) error {
 					drawChapterList(chapters, listSel, w, hh)
 				}
 			}
-			if !listMode {
+			if !listMode && !scrollMode {
 				drawBar()
 			}
 			continue
@@ -568,7 +692,7 @@ func playInteractive(events []cast.Event, speed, maxIdle float64) error {
 			if !ok || !dispatch(ev) {
 				return nil
 			}
-			if !listMode {
+			if !listMode && !scrollMode {
 				drawBar()
 			}
 		case <-winch:

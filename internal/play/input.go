@@ -13,6 +13,7 @@ const (
 	evByte  evKind = iota // a ground byte (printable or control) in ev.b
 	evArrow               // an arrow key; ev.b is 'A','B','C', or 'D'
 	evMouse               // a mouse button event at ev.mx,ev.my (1-based)
+	evScroll              // scroll action; ev.up true=up false=down
 )
 
 // event is one decoded input from the terminal.
@@ -22,6 +23,7 @@ type event struct {
 	mx    int  // evMouse: column (1-based)
 	my    int  // evMouse: row (1-based)
 	press bool // evMouse: left-button press (vs release/other)
+	up    bool // evScroll: true=scroll up, false=scroll down
 }
 
 type inputState int
@@ -96,17 +98,42 @@ func (p *inputParser) feed(b byte, out chan<- event) {
 }
 
 func (p *inputParser) dispatchCSI(final byte, out chan<- event) {
-	// Bare arrow: no parameters and an A/B/C/D final.
-	if len(p.csiBuf) == 0 {
+	params := string(p.csiBuf)
+
+	// Bare arrows (no parameters).
+	if params == "" {
 		switch final {
 		case 'A', 'B', 'C', 'D':
 			out <- event{kind: evArrow, b: final}
 		}
 		return
 	}
+
+	// Arrows with modifiers: Shift+Up (1;2A) / Shift+Down (1;2B) → scroll.
+	if final == 'A' || final == 'B' || final == 'C' || final == 'D' {
+		if params == "1;2" && (final == 'A' || final == 'B') {
+			out <- event{kind: evScroll, up: final == 'A'}
+			return
+		}
+		// Other modifier combos: pass through as bare arrow.
+		out <- event{kind: evArrow, b: final}
+		return
+	}
+
+	// Tilde sequences: PageUp (5~) / PageDown (6~).
+	if final == '~' {
+		switch params {
+		case "5":
+			out <- event{kind: evScroll, up: true}
+		case "6":
+			out <- event{kind: evScroll, up: false}
+		}
+		return
+	}
+
 	// SGR mouse: ESC [ < btn ; col ; row (M=press | m=release).
-	if (final == 'M' || final == 'm') && p.csiBuf[0] == '<' {
-		parts := strings.Split(string(p.csiBuf[1:]), ";")
+	if (final == 'M' || final == 'm') && len(p.csiBuf) > 0 && p.csiBuf[0] == '<' {
+		parts := strings.Split(params[1:], ";")
 		if len(parts) != 3 {
 			return
 		}
@@ -116,7 +143,12 @@ func (p *inputParser) dispatchCSI(final byte, out chan<- event) {
 		if e1 != nil || e2 != nil || e3 != nil {
 			return
 		}
-		// Left button, no motion/wheel bits set, on a press ('M').
+		// Mouse wheel: btn=64 (up) / btn=65 (down).
+		if btn == 64 || btn == 65 {
+			out <- event{kind: evScroll, up: btn == 64}
+			return
+		}
+		// Left button press.
 		leftPress := final == 'M' && btn&0x63 == 0
 		out <- event{kind: evMouse, mx: col, my: row, press: leftPress}
 	}

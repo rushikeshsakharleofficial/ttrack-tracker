@@ -96,7 +96,7 @@ func renderBar(width int, vt, lastT, speed float64, paused, inGoto bool, gotoBuf
 		if lastT > 0 {
 			pct = vt / lastT * 100
 		}
-		right = fmt.Sprintf(" %3.0f%%  %s   ←/→ seek · g goto · space play · q quit", pct, formatSpeed(speed))
+		right = fmt.Sprintf(" %3.0f%%  %s   ←/→ seek · pgup scroll · g goto · space play · q quit", pct, formatSpeed(speed))
 	}
 
 	barW = width - utf8.RuneCountInString(left) - utf8.RuneCountInString(right)
@@ -139,4 +139,22 @@ func drawStatus(vt, lastT, speed float64, paused, inGoto bool, gotoBuf string) (
 	}
 	fmt.Fprintf(os.Stdout, "\x1b7%s\x1b[%d;1H\x1b[2K\x1b[?7l%s\x1b[?7h\x1b8", region, h, line)
 	return bc, bw, h
+}
+
+// drawScrollBar paints the scroll-mode indicator on the given row.
+// Uses DECSC/DECRC so the caller's cursor position is unaffected.
+func drawScrollBar(total, offset, row int) {
+	w, _ := termSize()
+	var msg string
+	if offset == 0 {
+		msg = fmt.Sprintf(" ↑ SCROLL  %d lines  (pgup/↑/wheel · any key: exit scroll)", total)
+	} else {
+		msg = fmt.Sprintf(" ↑ SCROLL  -%d/%d  (pgdn/↓/wheel down · any key: exit scroll)", offset, total)
+	}
+	runes := []rune(msg)
+	if len(runes) > w {
+		msg = string(runes[:w])
+	}
+	fmt.Fprintf(os.Stdout, "\x1b7\x1b[%d;1H\x1b[2K\x1b[?7l%s%s%s\x1b[?7h\x1b8",
+		row, clrDim+clrBold, msg, clrReset)
 }
