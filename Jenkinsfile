@@ -19,7 +19,11 @@ pipeline {
         stage('Format') {
             steps {
                 sh '''
-                    unformatted=$(gofmt -l .)
+                    unformatted=$(find . -name "*.go" \
+                        -not -path "./.gopath/*" \
+                        -not -path "./.gocache/*" \
+                        -not -path "./vendor/*" \
+                        | xargs gofmt -l)
                     if [ -n "$unformatted" ]; then
                         echo "Not gofmt-clean:"
                         echo "$unformatted"
