@@ -1,7 +1,7 @@
 .PHONY: all build test fmt vet install clean rpm deb packages
 
 PREFIX ?= /usr/local
-VERSION ?= 0.8.3
+VERSION ?= 0.3.24
 NFPM ?= $(shell go env GOPATH)/bin/nfpm
 
 all: build
