@@ -66,8 +66,10 @@ pipeline {
                 sh '''
                     mkdir -p release
                     go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
-                    TTRACK_VERSION=$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo "0.0.0") \
-                        make packages
+                    NFPM="${GOPATH}/bin/nfpm"
+                    VERSION=$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo "0.0.0")
+                    TTRACK_VERSION="$VERSION" "$NFPM" pkg --config nfpm.yaml --packager rpm --target release/
+                    TTRACK_VERSION="$VERSION" "$NFPM" pkg --config nfpm.yaml --packager deb --target release/
                 '''
             }
             post {
