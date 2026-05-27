@@ -92,11 +92,35 @@ run 'ttrack help <command>' (or 'ttrack <command> --help') for command details
 
 ### From a released package
 
-Download `rpm`/`deb` from the [latest release](https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases):
+Every push to `main` publishes an `rpm`, a `deb`, and a static binary on the [releases page](https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases). Download the current version directly:
+
+**Debian / Ubuntu (.deb):**
 
 ```bash
-sudo dnf install ./ttrack-*.x86_64.rpm      # RHEL / Rocky / Fedora
-sudo apt install ./ttrack_*_amd64.deb       # Debian / Ubuntu
+curl -fLO https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases/download/v0.3.23/ttrack_0.3.23_amd64.deb
+sudo apt install ./ttrack_0.3.23_amd64.deb
+```
+
+**RHEL / Rocky / Fedora (.rpm):**
+
+```bash
+curl -fLO https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases/download/v0.3.23/ttrack-0.3.23-1.x86_64.rpm
+sudo dnf install ./ttrack-0.3.23-1.x86_64.rpm
+```
+
+**Static binary (any distro):**
+
+```bash
+curl -fL -o ttrack https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases/download/v0.3.23/ttrack-0.3.23-linux-amd64
+chmod +x ttrack && sudo install -m755 ttrack /usr/bin/ttrack
+```
+
+To always fetch the newest release without pinning a version:
+
+```bash
+VER=$(curl -fsSL https://api.github.com/repos/rushikeshsakharleofficial/ttrack-tracker/releases/latest | grep -oP '"tag_name":\s*"v\K[^"]+')
+curl -fLO "https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases/download/v${VER}/ttrack_${VER}_amd64.deb"
+sudo apt install "./ttrack_${VER}_amd64.deb"
 ```
 
 Packages install `ttrack` to `/usr/bin`, the `ttrackd` daemon to `/usr/libexec`, a systemd unit, the bash completion, and the auto-record login hook. The post-install step creates `/var/lib/ttrack` (root-only) and enables `ttrackd`.
