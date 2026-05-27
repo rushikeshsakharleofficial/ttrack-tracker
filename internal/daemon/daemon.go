@@ -2,10 +2,11 @@
 // recordings from per-user `ttrack rec` clients, stores them in the central
 // root-only store, and fans out live sessions to root tailers.
 //
-// Protocol (line-based handshake, then raw asciinema v2 cast bytes):
+// Protocol (line-based handshake, then raw bytes):
 //
-//	client -> "REC\n"            then streams cast bytes (recorder)
-//	client -> "TAIL <id>\n"      then reads live cast bytes (root only)
+//	client -> "REC\n"              then streams asciinema v2 cast bytes (recorder)
+//	client -> "TAIL <id>\n"        then reads live cast bytes (root only)
+//	client -> "ANSIBLE <runid>\n"  then streams JSON-lines ansible run bytes
 package daemon
 
 import (
@@ -170,6 +171,8 @@ func handle(conn *net.UnixConn, reg *registry) {
 		handleRec(conn, br, cred, reg)
 	case strings.HasPrefix(line, "TAIL "):
 		handleTail(conn, strings.TrimSpace(line[5:]), cred, reg)
+	case strings.HasPrefix(line, "ANSIBLE "):
+		handleAnsible(conn, br, strings.TrimSpace(line[8:]), cred, reg)
 	default:
 		_, _ = conn.Write([]byte("ERR unknown command\n"))
 	}
@@ -229,6 +232,63 @@ func handleTail(conn *net.UnixConn, id string, cred *unix.Ucred, reg *registry) 
 	// Block until the recorder ends (session.close() closes our conn) or the
 	// tailer disconnects.
 	_, _ = io.Copy(io.Discard, conn)
+}
+
+// handleAnsible stores an Ansible playbook run from `ttrack ansible-ingest`.
+// The run id is already validated by the ingest process but we re-validate
+// here before using it as a path component.
+func handleAnsible(conn *net.UnixConn, br *bufio.Reader, runID string, cred *unix.Ucred, reg *registry) {
+	if !validAnsibleRunID(runID) {
+		_, _ = conn.Write([]byte("ERR invalid ansible run id\n"))
+		return
+	}
+
+	uname := lookupUser(cred.Uid)
+	dir := filepath.Join(store.CentralDir(), uname, "ansible")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return
+	}
+	_ = os.Chmod(dir, 0o700)
+
+	path := filepath.Join(dir, runID+".ajsonl")
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	if err != nil {
+		return
+	}
+	enc, err := crypto.NewWriter(f, reg.key)
+	if err != nil {
+		f.Close()
+		return
+	}
+	defer f.Close()
+
+	buf := make([]byte, 32*1024)
+	for {
+		n, rerr := br.Read(buf)
+		if n > 0 {
+			if _, werr := enc.Write(buf[:n]); werr != nil {
+				return
+			}
+		}
+		if rerr != nil {
+			return
+		}
+	}
+}
+
+// validAnsibleRunID accepts only safe characters (alphanumeric, -, _, T) so
+// the run id can be used directly as a filename without path traversal risk.
+func validAnsibleRunID(id string) bool {
+	if len(id) < 5 || len(id) > 64 {
+		return false
+	}
+	for _, c := range id {
+		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+			(c >= '0' && c <= '9') || c == '-' || c == '_' || c == 'T') {
+			return false
+		}
+	}
+	return true
 }
 
 func peerCred(c *net.UnixConn) (*unix.Ucred, error) {

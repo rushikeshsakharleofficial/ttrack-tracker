@@ -503,6 +503,66 @@ internal/daemon    ttrackd socket server, live tail fan-out, ingest, key mgmt
 internal/complete  shell completion
 ```
 
+## Ansible Tracking
+
+ttrack can record Ansible playbook runs on the **controller** host (the machine running `ansible-playbook`). Each task — its name, module, host, status (`ok`/`changed`/`failed`/`unreachable`/`skipped`), output, and rc — is captured and stored encrypted in the central store alongside terminal sessions.
+
+### Enable the callback plugin
+
+**Via environment variables (per-run):**
+```bash
+export ANSIBLE_CALLBACK_PLUGINS=/usr/share/ttrack/ansible
+export ANSIBLE_CALLBACKS_ENABLED=ttrack
+ansible-playbook site.yml
+```
+
+**Via `ansible.cfg` (persistent):**
+```ini
+[defaults]
+callback_plugins  = /usr/share/ttrack/ansible
+callbacks_enabled = ttrack
+```
+
+The plugin is installed at `/usr/share/ttrack/ansible/ttrack.py` by the deb/rpm packages.
+
+### Browse runs
+
+```bash
+sudo ttrack ansible list
+sudo ttrack ansible show <runid>
+```
+
+Example output of `ttrack ansible list`:
+
+```
+RUN                           PLAYBOOK             CONTROLLER   OK     CHG    FAIL   STARTED              HOSTS
+20260527T140300-12345         deploy.yml           ctrl.host    8      3      1      2026-05-27 14:03:00  web1,web2
+```
+
+Example output of `ttrack ansible show 20260527T140300-12345`:
+
+```
+Playbook : deploy.yml
+Run ID   : 20260527T140300-12345
+...
+PLAY [Install web server]
+  ✓ web1          install nginx            (ansible.builtin.dnf) @14:03:01
+  ✗ web2          fail intentionally       (ansible.builtin.command) @14:03:03
+      stderr: command not found
+      rc: 1
+
+PLAY RECAP
+  web1                 ok=8    changed=3    failed=1    unreachable=0    skipped=0
+```
+
+### Fail-open
+
+If `ttrackd` is unreachable, the run is saved to `~/.local/share/ttrack/ansible/<runid>.ajsonl`. The playbook run is **never aborted** due to ttrack failures.
+
+### Limitation
+
+Only controllers with `ttrack` installed produce Ansible records. Managed hosts still receive raw Ansible SSH execs (useful if the sshd `ForceCommand` wrapper is configured, but those carry no task name or status).
+
 ## Contributing
 
 ttrack is **100% open source** and community-driven — contributions of all sizes are

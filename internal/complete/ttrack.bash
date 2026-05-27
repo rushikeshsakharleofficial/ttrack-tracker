@@ -10,7 +10,7 @@ _ttrack() {
 
     # Top-level subcommand.
     if [ "$COMP_CWORD" -eq 1 ]; then
-        COMPREPLY=( $(compgen -W "rec play ls ls-user play-user tail tree search export prune completion help" -- "$cur") )
+        COMPREPLY=( $(compgen -W "rec play ls ls-user play-user tail tree search export prune ansible completion help" -- "$cur") )
         return
     fi
 
@@ -36,6 +36,8 @@ _ttrack() {
             COMPREPLY=( $(compgen -W "$(ttrack __complete central-sessions 2>/dev/null)" -- "$cur") ) ;;
         search)
             COMPREPLY=( $(compgen -W "--from --to --user -i" -- "$cur") ) ;;
+        ansible)
+            COMPREPLY=( $(compgen -W "list show" -- "$cur") ) ;;
         completion)
             COMPREPLY=( $(compgen -W "bash" -- "$cur") ) ;;
         *)

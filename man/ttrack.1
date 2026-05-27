@@ -263,6 +263,54 @@ than N days, or \fBrange\fR FROM TO), previews matching sessions, and asks for
 confirmation. In-progress (active) recordings are never pruned.
 .B \-\-yes
 skips the final confirmation.
+.TP
+.B "ansible list \fR[\fB\-\-user\fR \fIU\fR]"
+List Ansible playbook runs from the central store. With no
+.BR \-\-user ,
+scans all users. Columns: RUN, PLAYBOOK, CONTROLLER, OK, CHG, FAIL, STARTED, HOSTS.
+.TP
+.B "ansible show \fR[\fB\-\-user\fR \fIU\fR] \fIrunid\fR"
+Show full detail for a playbook run: plays, per-task status (ok/changed/failed/
+unreachable/skipped), output for failed or changed tasks, and the PLAY RECAP per host.
+.PP
+.SS Ansible tracking
+.PP
+Install the callback plugin on the
+.B controller
+host (the machine running
+.BR ansible-playbook ):
+.PP
+.RS
+.EX
+export ANSIBLE_CALLBACK_PLUGINS=/usr/share/ttrack/ansible
+export ANSIBLE_CALLBACKS_ENABLED=ttrack
+ansible-playbook site.yml
+.EE
+.RE
+.PP
+Or add to
+.IR ansible.cfg :
+.PP
+.RS
+.EX
+[defaults]
+callback_plugins  = /usr/share/ttrack/ansible
+callbacks_enabled = ttrack
+.EE
+.RE
+.PP
+The plugin spawns
+.B ttrack ansible-ingest
+as a subprocess, which streams JSON-lines events to ttrackd via
+.IR /run/ttrackd.sock .
+If ttrackd is unreachable the run is saved locally to
+.IR ~/.local/share/ttrack/ansible/<runid>.ajsonl
+(fail-open; playbook never aborted). Runs stored in the central store are
+encrypted at rest with the same AES-256-GCM key used for terminal recordings.
+.PP
+Limitation: only controllers with ttrack installed produce Ansible records.
+Managed hosts still receive raw Ansible SSH execs (captured by the sshd
+ForceCommand wrapper, if configured), but those carry no task name or status.
 .PP
 Central recordings are encrypted at rest (AES-256-GCM); on disk a
 .I .cast

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"ttrack/internal/ansible"
 	"ttrack/internal/audit"
 	"ttrack/internal/complete"
 	"ttrack/internal/play"
@@ -35,7 +36,14 @@ func main() {
 		return
 	}
 	// `ttrack <command> help|-h|--help` — that command's help.
+	// Also handle `ttrack ansible list --help` etc.
 	if len(rest) > 0 && isHelpToken(rest[0]) {
+		if h, ok := commandHelp(cmd); ok {
+			fmt.Print(h)
+			return
+		}
+	}
+	if cmd == "ansible" && len(rest) > 0 && len(rest) > 1 && isHelpToken(rest[1]) {
 		if h, ok := commandHelp(cmd); ok {
 			fmt.Print(h)
 			return
@@ -64,6 +72,11 @@ func main() {
 		err = audit.Export(rest)
 	case "prune":
 		err = audit.Prune(rest)
+	case "ansible":
+		err = ansible.Dispatch(rest)
+	case "ansible-ingest":
+		// Hidden: called by the Ansible callback plugin subprocess.
+		err = ansible.Ingest(rest)
 	case "completion":
 		err = complete.Script(rest)
 	case "__complete":
@@ -100,6 +113,8 @@ audit commands (read the central root-only store; run as root):
   ttrack search [opts] <string>        find a string across recordings
   ttrack export [-o file] <id>         decrypt a session to a plaintext cast
   ttrack prune                         interactively delete recordings (by user/time)
+  ttrack ansible list [--user U]       list Ansible playbook runs
+  ttrack ansible show <runid>          show tasks and recap for a run
 
   ttrack completion bash               print the bash completion script
 
@@ -226,6 +241,28 @@ Requires the prune password (set on first use). Never deletes active sessions.
 
 options:
   --yes   skip the final confirmation prompt
+`, true
+	case "ansible":
+		return `ttrack ansible — Ansible playbook tracking (root)
+
+usage: ttrack ansible list [--user U]
+       ttrack ansible show [--user U] <runid>
+
+Reads Ansible runs recorded by the ttrack callback plugin.
+Runs are stored in the central store under each user's ansible/ directory.
+
+subcommands:
+  list   table of runs: RUN PLAYBOOK CONTROLLER OK CHG FAIL STARTED HOSTS
+  show   full run detail: plays, tasks with status/output, PLAY RECAP
+
+Enable tracking on the Ansible controller:
+  export ANSIBLE_CALLBACK_PLUGINS=/usr/share/ttrack/ansible
+  export ANSIBLE_CALLBACKS_ENABLED=ttrack
+
+or in ansible.cfg:
+  [defaults]
+  callback_plugins = /usr/share/ttrack/ansible
+  callbacks_enabled = ttrack
 `, true
 	case "completion":
 		return `ttrack completion — print the shell completion script

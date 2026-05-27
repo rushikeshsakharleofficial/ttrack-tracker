@@ -63,6 +63,14 @@ contents:
     dst: /usr/share/doc/ttrack/sshd-forcecommand.conf.example
     file_info:
       mode: 0644
+  - src: scripts/ansible/ttrack.py
+    dst: /usr/share/ttrack/ansible/ttrack.py
+    file_info:
+      mode: 0644
+  - src: scripts/ansible/README.md
+    dst: /usr/share/ttrack/ansible/README.md
+    file_info:
+      mode: 0644
 
 scripts:
   postinstall: ./packaging/postinstall.sh

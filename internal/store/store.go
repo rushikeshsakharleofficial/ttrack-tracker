@@ -293,3 +293,29 @@ func isActive(name string) bool {
 
 // IsActive is the exported form of isActive for CLI use.
 func IsActive(name string) bool { return isActive(name) }
+
+// AnsibleDir returns the ansible sub-directory for a given user in the
+// central store. Files are named <runid>.ajsonl and encrypted at rest.
+func AnsibleDir(user string) string {
+	return filepath.Join(CentralDir(), user, "ansible")
+}
+
+// AnsibleRuns returns the run ids (without .ajsonl extension) for a user,
+// in the order returned by os.ReadDir (alphabetical / by timestamp prefix).
+func AnsibleRuns(user string) ([]string, error) {
+	dir := AnsibleDir(user)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var ids []string
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".ajsonl") {
+			ids = append(ids, strings.TrimSuffix(e.Name(), ".ajsonl"))
+		}
+	}
+	return ids, nil
+}
