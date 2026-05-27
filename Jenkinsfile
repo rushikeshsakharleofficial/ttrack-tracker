@@ -92,27 +92,29 @@ pipeline {
                 expression { env.GIT_BRANCH == 'origin/main' || env.BRANCH_NAME == 'main' }
             }
             steps {
-                script {
-                    def version = sh(script: '''
-                        VERSION=$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//')
-                        if [ -z "$VERSION" ]; then
-                          echo "0.0.0"
-                        else
-                          echo "$VERSION"
+                withCredentials([string(credentialsId: 'github-release-token', variable: 'GH_TOKEN')]) {
+                    sh '''
+                        set -e
+
+                        GH="${GOPATH}/bin/gh"
+                        if [ ! -x "$GH" ]; then
+                            GOBIN="${GOPATH}/bin" go install github.com/cli/cli/v2/cmd/gh@v2.87.3
                         fi
-                    ''', returnStdout: true).trim()
-                     sh """
-                         set -e
-                         if gh release view \"v${version}\" >/dev/null 2>&1; then
-                             echo "Release v${version} already exists"
-                         else
-                             gh release create \"v${version}\" -t \"v${version}\" -n \"ttrack ${version}\"
-                         fi
-                         for asset in release/*.{rpm,deb}; do
-                             [ -e \"$asset\" ] && gh release upload \"v${version}\" \"$asset\"
-                         done
-                     """
-                     echo "Jenkins artifacts: ${env.BUILD_URL}artifact/release/"
+
+                        version=$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || true)
+                        version=${version:-0.0.0}
+                        repo="rushikeshsakharleofficial/ttrack-tracker"
+                        if "$GH" release view "v${version}" --repo "$repo" >/dev/null 2>&1; then
+                            echo "Release v${version} already exists"
+                        else
+                            "$GH" release create "v${version}" --repo "$repo" \
+                                --title "v${version}" --notes "ttrack ${version}"
+                        fi
+                        for asset in release/*.rpm release/*.deb; do
+                            [ -e "$asset" ] && "$GH" release upload "v${version}" "$asset" \
+                                --repo "$repo" --clobber
+                        done
+                    '''
                 }
             }
         }
