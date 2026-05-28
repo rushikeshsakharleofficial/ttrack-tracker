@@ -37,7 +37,7 @@ _ttrack() {
         search)
             COMPREPLY=( $(compgen -W "--from --to --user -i" -- "$cur") ) ;;
         ansible)
-            COMPREPLY=( $(compgen -W "list show" -- "$cur") ) ;;
+            COMPREPLY=( $(compgen -W "list show incoming" -- "$cur") ) ;;
         completion)
             COMPREPLY=( $(compgen -W "bash" -- "$cur") ) ;;
         *)
