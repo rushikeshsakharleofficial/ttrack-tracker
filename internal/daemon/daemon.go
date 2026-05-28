@@ -11,6 +11,7 @@ package daemon
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -27,6 +28,21 @@ import (
 	"ttrack/internal/crypto"
 	"ttrack/internal/store"
 )
+
+// isTemporary returns true for transient network errors that are safe to retry.
+// net.Error.Temporary() was deprecated in Go 1.18; we check syscall-level EAGAIN/EINTR.
+func isTemporary(err error) bool {
+	var ne net.Error
+	if errors.As(err, &ne) {
+		return ne.Timeout()
+	}
+	// EINTR or EAGAIN from accept — safe to retry.
+	var errno interface{ Temporary() bool }
+	if errors.As(err, &errno) {
+		return errno.Temporary()
+	}
+	return false
+}
 
 type session struct {
 	mu   sync.Mutex
@@ -96,7 +112,7 @@ func (s *session) close() error {
 }
 
 type registry struct {
-	mu   sync.Mutex
+	mu   sync.RWMutex // RWMutex: concurrent reads (tail) don't block each other
 	live map[string]sessionRef
 	key  []byte // at-rest encryption key
 }
@@ -119,9 +135,9 @@ func (r *registry) remove(id string) {
 }
 
 func (r *registry) get(id string) (sessionRef, bool) {
-	r.mu.Lock()
+	r.mu.RLock()
 	ref, ok := r.live[id]
-	r.mu.Unlock()
+	r.mu.RUnlock()
 	return ref, ok
 }
 
@@ -160,11 +176,27 @@ func Run(socketPath string) error {
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
-			// A single bad accept must not kill the recorder service.
-			fmt.Fprintf(os.Stderr, "ttrackd: accept: %v\n", err)
+			// Transient errors (e.g. EINTR): log and retry.
+			// Permanent errors (listener closed, fd exhausted): stop.
+			if ne, ok := err.(net.Error); ok && ne.Timeout() {
+				fmt.Fprintf(os.Stderr, "ttrackd: accept timeout: %v\n", err)
+				continue
+			}
+			// Check if it's a temporary error
+			if isTemporary(err) {
+				fmt.Fprintf(os.Stderr, "ttrackd: accept (retrying): %v\n", err)
+				continue
+			}
+			return fmt.Errorf("ttrackd: accept fatal: %w", err)
+		}
+		uc, ok := conn.(*net.UnixConn)
+		if !ok {
+			// Should never happen with a unix listener, but guard the cast.
+			fmt.Fprintf(os.Stderr, "ttrackd: unexpected conn type %T\n", conn)
+			_ = conn.Close()
 			continue
 		}
-		go handle(conn.(*net.UnixConn), reg)
+		go handle(uc, reg)
 	}
 }
 
@@ -207,6 +239,8 @@ func handleRec(conn *net.UnixConn, br *bufio.Reader, cred *unix.Ucred, reg *regi
 	path := filepath.Join(dir, id+".cast")
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "ttrackd: open session file %s: %v\n", path, err)
+		_, _ = conn.Write([]byte("ERR session file unavailable\n"))
 		return
 	}
 	enc, err := crypto.NewWriter(f, reg.key)
@@ -275,6 +309,8 @@ func handleAnsible(conn *net.UnixConn, br *bufio.Reader, runID string, cred *uni
 	path := filepath.Join(dir, runID+".ajsonl")
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "ttrackd: open ansible file %s: %v\n", path, err)
+		_, _ = conn.Write([]byte("ERR ansible file unavailable\n"))
 		return
 	}
 	enc, err := crypto.NewWriter(f, reg.key)
