@@ -10,7 +10,7 @@ _ttrack() {
 
     # Top-level subcommand.
     if [ "$COMP_CWORD" -eq 1 ]; then
-        COMPREPLY=( $(compgen -W "rec play ls tail tree search export prune ansible completion version --check help" -- "$cur") )
+        COMPREPLY=( $(compgen -W "rec play ls tail tree search export prune ansible init completion version --check help" -- "$cur") )
         return
     fi
 
@@ -27,6 +27,8 @@ _ttrack() {
     esac
 
     case "$sub" in
+        init)
+            COMPREPLY=( $(compgen -W "--reset-password --clear-password" -- "$cur") ) ;;
         rec)
             COMPREPLY=( $(compgen -W "-q -o" -- "$cur") ) ;;
         play)

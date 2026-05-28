@@ -7,8 +7,10 @@ import (
 
 	"ttrack/internal/ansible"
 	"ttrack/internal/audit"
+	"ttrack/internal/auth"
 	"ttrack/internal/complete"
 	"ttrack/internal/config"
+	"ttrack/internal/initcmd"
 	"ttrack/internal/play"
 	"ttrack/internal/record"
 	"ttrack/internal/store"
@@ -66,9 +68,16 @@ func main() {
 
 	var err error
 	switch cmd {
+	case "init":
+		err = initcmd.Run(rest)
 	case "rec", "record":
 		err = record.Run(rest)
 	case "play":
+		// Password gate — prompt if playback password is set.
+		if perr := auth.PromptAndVerify(); perr != nil {
+			fmt.Fprintln(os.Stderr, "ttrack:", perr)
+			os.Exit(1)
+		}
 		// Auto-detect: existing local file → local play; otherwise → central store ID.
 		target := ""
 		for _, a := range rest {
@@ -170,6 +179,9 @@ audit commands (central root-only store):
   ttrack ansible list [--user U]          list Ansible playbook runs (root)
   ttrack ansible show <runid>             show tasks and recap for a run (root)
 
+  ttrack init                             first-time setup wizard
+  ttrack init --reset-password            change playback password (requires current)
+  ttrack init --clear-password            remove playback password (requires current)
   ttrack completion bash                  print the bash completion script
   ttrack version                          print version
   ttrack --check                          validate config and show resolved values
@@ -189,6 +201,24 @@ run 'ttrack help <command>' (or 'ttrack <command> --help') for command details
 // false for an unknown command.
 func commandHelp(name string) (string, bool) {
 	switch name {
+	case "init":
+		return `ttrack init — first-time setup wizard and playback password management
+
+usage: ttrack init                    run the setup wizard
+       ttrack init --reset-password   change the playback password
+       ttrack init --clear-password   remove playback password protection
+
+The wizard checks:
+  [1/4] Config file (/etc/ttrack/ttrack.conf)
+  [2/4] Daemon (ttrackd) reachability
+  [3/4] Encryption key existence
+  [4/4] Playback password status (offers to set one if absent)
+
+--reset-password and --clear-password both require the current password first.
+A playback password must be at least 8 characters.
+The hash is stored in /etc/ttrack/.playback_passwd (root:root 0600).
+When set, ttrack play prompts for the password before replaying any session.
+`, true
 	case "rec", "record":
 		return `ttrack rec — record a terminal session
 
@@ -345,6 +375,11 @@ func runConfigCheck() int {
 	fmt.Printf("%-22s = %dms\n", "eof_grace_ms", cfg.EOFGrace.Milliseconds())
 	fmt.Printf("%-22s = %d\n", "ansible_output_cap", cfg.AnsibleOutputCap)
 	fmt.Printf("%-22s = %d\n", "scroll_buffer", cfg.ScrollBuffer)
+	if auth.IsSet() {
+		fmt.Printf("%-22s = SET\n", "playback_password")
+	} else {
+		fmt.Printf("%-22s = not set\n", "playback_password")
+	}
 
 	// Warn about active env overrides so user knows values may differ from file.
 	overrides := [][2]string{
