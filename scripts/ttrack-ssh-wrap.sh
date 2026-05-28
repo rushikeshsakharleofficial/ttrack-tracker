@@ -23,6 +23,7 @@ fi
 
 # Pass file-transfer / subsystem commands through untouched.
 case "$cmd" in
+    ttrack\ rec*|*/ttrack\ rec*| \
     scp\ *|*/scp\ *| \
     sftp-server*|*/sftp-server*|internal-sftp*| \
     rsync\ --server*|*/rsync\ --server*| \

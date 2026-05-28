@@ -99,7 +99,10 @@ func Run(args []string) error {
 	closePTYFn := func() { closePTY.Do(func() { _ = ptmx.Close() }) }
 	defer closePTYFn()
 
-	winch := watchResize(ptmx)
+	start := time.Now()
+	var wg sync.WaitGroup
+
+	winch := watchResize(ptmx, &wg)
 	restore := makeRawRestore(int(os.Stdin.Fd()))
 	defer restore()
 
@@ -112,9 +115,6 @@ func Run(args []string) error {
 			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGHUP)
 		}
 	}()
-
-	start := time.Now()
-	var wg sync.WaitGroup
 
 	// stdin → PTY. On EOF: try Ctrl-D (graceful), then force-close PTY
 	// master after grace period (closing master sends SIGHUP to child
@@ -169,10 +169,15 @@ func buildHeader(cmdArgs []string, shell string) cast.Header {
 }
 
 // watchResize forwards SIGWINCH to the PTY and syncs the initial size.
-func watchResize(ptmx *os.File) chan os.Signal {
+// It increments wg by 1 and decrements it when the goroutine exits, so the
+// caller's wg.Wait() is guaranteed to see the goroutine fully stopped before
+// returning (prevents data races on os.Stdin in tests).
+func watchResize(ptmx *os.File, wg *sync.WaitGroup) chan os.Signal {
 	winch := make(chan os.Signal, 1)
 	signal.Notify(winch, syscall.SIGWINCH)
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		for range winch {
 			_ = pty.InheritSize(os.Stdin, ptmx)
 		}
