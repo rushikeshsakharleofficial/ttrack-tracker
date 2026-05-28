@@ -19,13 +19,21 @@ fi
 
 # Install ForceCommand sshd config to capture non-interactive SSH sessions.
 # Idempotent: only write if not already present (preserves manual edits).
+SSHD_MAIN=/etc/ssh/sshd_config
 SSHD_CONF=/etc/ssh/sshd_config.d/zz-ttrack.conf
-if [ ! -f "$SSHD_CONF" ] && [ -d /etc/ssh/sshd_config.d ]; then
-    cat > "$SSHD_CONF" << 'SSHD_EOF'
+if [ -d /etc/ssh/sshd_config.d ]; then
+    # Ensure main sshd_config includes the drop-in directory; without this
+    # line the drop-in files are silently ignored by sshd.
+    if [ -f "$SSHD_MAIN" ] && ! grep -qE '^Include\s+/etc/ssh/sshd_config\.d/\*' "$SSHD_MAIN"; then
+        sed -i '1s|^|Include /etc/ssh/sshd_config.d/*.conf\n|' "$SSHD_MAIN"
+    fi
+    if [ ! -f "$SSHD_CONF" ]; then
+        cat > "$SSHD_CONF" << 'SSHD_EOF'
 # Installed by ttrack package. Remove this file to disable SSH session recording.
 # The wrapper is fail-open: scp/sftp/rsync pass through untouched.
 ForceCommand /usr/libexec/ttrack-ssh-wrap
 SSHD_EOF
+    fi
 fi
 # Validate and reload sshd if config is valid.
 if command -v sshd >/dev/null 2>&1 && sshd -t 2>/dev/null; then
