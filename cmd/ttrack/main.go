@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"ttrack/internal/ansible"
 	"ttrack/internal/audit"
@@ -68,15 +69,54 @@ func main() {
 	case "rec", "record":
 		err = record.Run(rest)
 	case "play":
-		err = play.Run(rest)
+		// Auto-detect: existing local file → local play; otherwise → central store ID.
+		target := ""
+		for _, a := range rest {
+			if !strings.HasPrefix(a, "-") {
+				target = a
+			}
+		}
+		if target != "" {
+			if _, serr := os.Stat(target); serr == nil {
+				err = play.Run(rest)
+			} else {
+				err = audit.PlayUser(rest)
+			}
+		} else {
+			err = play.Run(rest)
+		}
 	case "ls", "list":
-		err = store.List(rest)
+		// --all → all users in central store; --user <name> → that user; (none) → local.
+		hasAll := false
+		userVal := ""
+		for i, a := range rest {
+			switch {
+			case a == "--all" || a == "-a":
+				hasAll = true
+			case a == "--user" && i+1 < len(rest):
+				userVal = rest[i+1]
+			case strings.HasPrefix(a, "--user="):
+				userVal = strings.TrimPrefix(a, "--user=")
+			}
+		}
+		if hasAll {
+			err = audit.LsUser(nil)
+		} else if userVal != "" {
+			err = audit.LsUser([]string{userVal})
+		} else {
+			err = store.List(rest)
+		}
+	// Hidden backward-compat aliases — not shown in usage.
 	case "ls-user":
 		err = audit.LsUser(rest)
 	case "play-user":
 		err = audit.PlayUser(rest)
 	case "tail":
-		err = audit.Tail(rest)
+		if len(rest) > 0 && rest[0] == "-f" {
+			err = audit.TailLive(rest[1:])
+		} else {
+			err = audit.TailStatic(rest)
+		}
 	case "tree":
 		err = audit.Tree(rest)
 	case "search":
@@ -114,25 +154,25 @@ func usage() {
 	fmt.Fprint(os.Stderr, `ttrack — Linux terminal session tracker
 
 usage:
-  ttrack rec [-q] [-o file] [cmd...]   record a shell session (default: $SHELL)
-  ttrack play [--speed N] file         replay a local recording
-  ttrack ls                            list your local recordings
+  ttrack rec [-q] [-o file] [cmd...]      record a shell session (default: $SHELL)
+  ttrack play [--speed N] <file|id>       replay local file or central session (auto-detect)
+  ttrack ls                               list local recordings
+  ttrack ls --all                         list all users in central store (root)
+  ttrack ls --user <name>                 list one user's sessions in central store (root)
 
-audit commands (read the central root-only store; run as root):
-  ttrack ls-user [username]            list users, or one user's sessions
-  ttrack play-user [--speed N] <id>    replay a session by id (any user)
-  ttrack tail <id>                     live-stream an in-progress session
-  ttrack tree                          users -> sessions tree
-  ttrack search [opts] <string>        find a string across recordings
-  ttrack export [-o file] <id>         decrypt a session to a plaintext cast
-  ttrack prune                         interactively delete recordings (by user/time)
-  ttrack ansible list [--user U]       list Ansible playbook runs (controller-side)
-  ttrack ansible show <runid>          show tasks and recap for a run
-  ttrack ansible incoming [--user U]   show incoming Ansible execs on this host
+audit commands (central root-only store):
+  ttrack tail [-n N] <id>                 show last N lines of a session (default 20)
+  ttrack tail -f <id>                     live-stream an in-progress session (root)
+  ttrack tree                             users -> sessions tree (root)
+  ttrack search [opts] <string>           find a string across recordings (root)
+  ttrack export [-o file] <id>            decrypt a session to a plaintext cast (root)
+  ttrack prune                            interactively delete recordings (root)
+  ttrack ansible list [--user U]          list Ansible playbook runs (root)
+  ttrack ansible show <runid>             show tasks and recap for a run (root)
 
-  ttrack completion bash               print the bash completion script
-  ttrack version                       print version
-  ttrack --check                       validate /etc/ttrack/ttrack.conf and show resolved values
+  ttrack completion bash                  print the bash completion script
+  ttrack version                          print version
+  ttrack --check                          validate config and show resolved values
 
 search opts: --from / --to <YYYY-MM-DD[ HH:MM]>, --user <name>, -i
 recordings in the central store are encrypted at rest (opaque to cat/strings)
@@ -163,56 +203,39 @@ options:
   -q        quiet: suppress the banner and saved-path message (also TTRACK_QUIET=1)
 `, true
 	case "play":
-		return `ttrack play — replay a recording
+		return `ttrack play — replay a recording (local file or central session)
 
 usage: ttrack play [--speed N] [--idle N] <file|id>
 
-Resolves a path, a local 'ttrack ls' id, or — as root — a central-store
-session id (like play-user). Replays with the original timing.
+Auto-detects: if the argument is an existing local file path it plays that;
+otherwise it looks up the session id in the central store (same as play-user).
 
 options:
   --speed N   playback multiplier (default 1.0; >1 faster, <1 slower)
-  --idle N    cap idle gaps to N seconds (default 0 = exact timing);
-              ignored in interactive mode
+  --idle N    cap idle gaps to N seconds (default 0 = exact timing)
 
-on a terminal this opens a full-screen player (thin transport bar; holds the
-final frame until you quit). controls:
+on a terminal this opens a full-screen player. controls:
   space pause/resume    left/right or h/l seek 5s    up/down or +/- speed
-  g jump to a recorded command (list; t = type a time)  0 restart
-  b hide/show the bar (full-height playback)            q or Ctrl-C quit
-  click the bar to seek (Shift+click to select text)
+  g jump to a recorded command    0 restart    q or Ctrl-C quit
 `, true
 	case "ls", "list":
-		return `ttrack ls — list your local recordings
+		return `ttrack ls — list recordings
 
-usage: ttrack ls
+usage: ttrack ls                   list local recordings (~/.local/share/ttrack)
+       ttrack ls --all             list all users in central store (root)
+       ttrack ls --user <name>     list one user's sessions in central store (root)
 
-Lists recordings in $TTRACK_DIR (default ~/.local/share/ttrack).
-Columns: STATUS, FILE, STARTED, DURATION, COMMAND.
-`, true
-	case "ls-user":
-		return `ttrack ls-user — list central-store users or sessions (root)
-
-usage: ttrack ls-user [username]
-
-With no argument, lists users that have recordings and their session counts.
-With a username, lists that user's sessions. Columns: STATUS, TYPE, SESSION,
-STARTED, DURATION, COMMAND. TYPE is interactive or non-interactive.
-`, true
-	case "play-user":
-		return `ttrack play-user — replay any user's session by id (root)
-
-usage: ttrack play-user [--speed N] [--idle N] <sessionid>
-
-Searches all users in the central store for the id. Same options and
-interactive controls as 'ttrack play'.
+Columns (local): STATUS, FILE, STARTED, DURATION, COMMAND
+Columns (central): STATUS, TYPE, SESSION, STARTED, DURATION, COMMAND
 `, true
 	case "tail":
-		return `ttrack tail — live-stream an in-progress session (root)
+		return `ttrack tail — show session output (tail or live-stream)
 
-usage: ttrack tail <sessionid>
+usage: ttrack tail [-n N] <sessionid>   print last N lines of a session (default 20)
+       ttrack tail -f <sessionid>        live-stream an in-progress session (root)
 
-Streams a running session's output from the daemon as it happens.
+-n N   number of output lines to display (static mode only)
+-f     follow: stream live output from the daemon as it arrives
 `, true
 	case "tree":
 		return `ttrack tree — central store as a users -> sessions tree (root)
@@ -270,7 +293,6 @@ Runs are stored in the central store under each user's ansible/ directory.
 subcommands:
   list       table of runs: RUN PLAYBOOK CONTROLLER OK CHG FAIL STARTED HOSTS
   show       full run detail: plays, tasks with status/output, PLAY RECAP
-  incoming   Ansible modules received on this host (SSH ForceCommand captures)
 
 Enable tracking on the Ansible controller:
   export ANSIBLE_CALLBACK_PLUGINS=/usr/share/ttrack/ansible

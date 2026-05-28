@@ -5,6 +5,7 @@ package audit
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -496,8 +497,8 @@ func humanSize(n int64) string {
 	return fmt.Sprintf("%.1f %ciB", float64(n)/float64(div), "KMGT"[exp])
 }
 
-// Tail handles `ttrack tail <sessionid>` — live stream from the daemon (root).
-func Tail(args []string) error {
+// TailLive handles `ttrack tail -f <sessionid>` — live stream from the daemon (root).
+func TailLive(args []string) error {
 	if len(args) < 1 {
 		return fmt.Errorf("usage: ttrack tail <sessionid>")
 	}
@@ -537,6 +538,60 @@ func Tail(args []string) error {
 			}
 		}
 	}
+}
+
+// TailStatic handles `ttrack tail <sessionid>` — prints the last N lines of a
+// completed (or in-progress) session from the central store. Like `tail -n N`.
+func TailStatic(args []string) error {
+	fs := flag.NewFlagSet("tail", flag.ContinueOnError)
+	n := fs.Int("n", 20, "number of output lines to show")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() < 1 {
+		return fmt.Errorf("usage: ttrack tail [-n N] <sessionid>  (live: ttrack tail -f <sessionid>)")
+	}
+	path, _, err := store.FindCentral(fs.Arg(0))
+	if err != nil {
+		return notRoot(err)
+	}
+	rc, err := store.OpenCast(path)
+	if err != nil {
+		return err
+	}
+	defer rc.Close()
+	br := bufio.NewReader(rc)
+	if _, herr := cast.ReadHeader(br); herr != nil {
+		return herr
+	}
+	var out bytes.Buffer
+	for {
+		ev, rerr := cast.ReadEvent(br)
+		if rerr == io.EOF {
+			break
+		}
+		if rerr != nil {
+			return rerr
+		}
+		if ev.Type == "o" {
+			out.WriteString(ev.Data)
+		}
+	}
+	data := out.Bytes()
+	// Find offset of the Nth-from-last newline so we print the last N lines.
+	count := 0
+	pos := len(data)
+	for pos > 0 && count <= *n {
+		pos--
+		if data[pos] == '\n' {
+			count++
+		}
+	}
+	if count > 0 {
+		pos++ // step past the delimiter newline
+	}
+	_, werr := os.Stdout.Write(data[pos:])
+	return werr
 }
 
 func centralPath(user, name string) string {
