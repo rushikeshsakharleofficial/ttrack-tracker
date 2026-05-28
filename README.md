@@ -382,6 +382,22 @@ ttrack completion bash | sudo tee /usr/share/bash-completion/completions/ttrack
 It completes subcommands, flags, local sessions (for `play`), and — when run as root —
 users and central session ids (for `ls-user`, `play-user`, `tail`).
 
+## Configuration
+
+ttrack reads `/etc/ttrack/ttrack.conf` on startup (override path with `TTRACK_CONFIG`).  
+All keys are optional — built-in defaults are used when the file is absent.
+
+| Key | Default | Env override | Purpose |
+|:----|:--------|:------------|:--------|
+| `socket_path` | `/run/ttrackd.sock` | `TTRACKD_SOCK` | Daemon Unix socket |
+| `central_dir` | `/var/lib/ttrack` | `TTRACK_CENTRAL_DIR` | Root of central session store |
+| `key_file` | `.ttrack.key` | `TTRACK_KEY_FILE` | Encryption key path (relative to central_dir or absolute) |
+| `dial_timeout_sec` | `1` | `TTRACK_DIAL_TIMEOUT_SEC` | Seconds to wait when connecting to daemon |
+| `eof_grace_ms` | `500` | `TTRACK_EOF_GRACE_MS` | Ms before force-closing PTY on stdin EOF |
+| `ansible_output_cap` | `8192` | `TTRACK_ANSIBLE_OUTPUT_CAP` | Max bytes stored per Ansible task output |
+
+See `/usr/share/ttrack/ttrack.conf.example` for an annotated sample.
+
 ## Configuration guide
 
 `ttrack` and `ttrackd` need no config file — behavior is controlled by environment
