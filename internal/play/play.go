@@ -345,13 +345,13 @@ func playInteractive(events []cast.Event, speed, maxIdle float64) error {
 			start = 0
 		}
 
-		_, _ = io.WriteString(os.Stdout, resetRegion+clearScreen)
+		_, _ = io.WriteString(os.Stdout, resetRegion+clearScreen+"\x1b[0m")
 		for i := start; i < end; i++ {
 			line := scrollBuf.lines[i]
 			if visWidth(line) > w {
 				line = truncLine(line, w)
 			}
-			fmt.Fprint(os.Stdout, line+"\r\n")
+			fmt.Fprint(os.Stdout, line+"\x1b[0m\r\n")
 		}
 		drawScrollBar(total, scrollOffset, hh)
 	}

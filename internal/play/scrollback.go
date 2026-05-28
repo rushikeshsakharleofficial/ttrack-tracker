@@ -117,18 +117,69 @@ func stripAnsi(s string) string {
 	return b.String()
 }
 
-// visWidth returns the visible rune count of s, excluding ANSI sequences.
+// runeWidth returns the number of terminal columns occupied by r.
+// Most runes are 1 column; CJK ideographs, fullwidth forms, and most
+// emoji are 2 columns (East Asian Width W or F).
+func runeWidth(r rune) int {
+	if r < 0x1100 {
+		return 1
+	}
+	switch {
+	case r >= 0x1100 && r <= 0x115F:
+		return 2 // Hangul Jamo
+	case r == 0x2329 || r == 0x232A:
+		return 2 // Angle brackets
+	case r >= 0x2E80 && r <= 0x303E:
+		return 2 // CJK Radicals .. CJK Symbols
+	case r >= 0x3041 && r <= 0x33FF:
+		return 2 // Hiragana..CJK Compatibility
+	case r >= 0x3400 && r <= 0x4DBF:
+		return 2 // CJK Extension A
+	case r >= 0x4E00 && r <= 0xA4CF:
+		return 2 // CJK Unified + Yi
+	case r >= 0xA960 && r <= 0xA97F:
+		return 2 // Hangul Jamo Extended-A
+	case r >= 0xAC00 && r <= 0xD7AF:
+		return 2 // Hangul Syllables
+	case r >= 0xF900 && r <= 0xFAFF:
+		return 2 // CJK Compatibility Ideographs
+	case r >= 0xFE10 && r <= 0xFE19:
+		return 2 // Vertical Forms
+	case r >= 0xFE30 && r <= 0xFE4F:
+		return 2 // CJK Compatibility Forms
+	case r >= 0xFF01 && r <= 0xFF60:
+		return 2 // Fullwidth Forms
+	case r >= 0xFFE0 && r <= 0xFFE6:
+		return 2 // Fullwidth Signs
+	case r >= 0x1B000 && r <= 0x1B0FF:
+		return 2 // Kana Supplement
+	case r >= 0x1F004 && r <= 0x1FFFD:
+		return 2 // Emoji and supplemental symbols
+	case r >= 0x20000 && r <= 0x2FFFD:
+		return 2 // CJK Extension B-F
+	case r >= 0x30000 && r <= 0x3FFFD:
+		return 2 // CJK Extension G+
+	}
+	return 1
+}
+
+// visWidth returns the visible terminal column width of s, excluding ANSI sequences.
 func visWidth(s string) int {
-	return utf8.RuneCountInString(stripAnsi(s))
+	plain := stripAnsi(s)
+	w := 0
+	for _, r := range plain {
+		w += runeWidth(r)
+	}
+	return w
 }
 
 // truncLine truncates a line (containing ANSI colour sequences) to at most
-// maxRunes visible characters, appending a reset so colours do not bleed.
-func truncLine(s string, maxRunes int) string {
+// maxCols visible terminal columns, appending a reset so colours do not bleed.
+func truncLine(s string, maxCols int) string {
 	var b strings.Builder
-	count := 0
+	cols := 0
 	i := 0
-	for i < len(s) && count < maxRunes {
+	for i < len(s) {
 		if s[i] == '\x1b' {
 			seq, n, _ := parseESC(s, i)
 			b.WriteString(seq)
@@ -139,11 +190,15 @@ func truncLine(s string, maxRunes int) string {
 			continue
 		}
 		r, sz := utf8.DecodeRuneInString(s[i:])
+		rw := runeWidth(r)
+		if cols+rw > maxCols {
+			break // would overflow — stop here
+		}
 		b.WriteRune(r)
-		count++
+		cols += rw
 		i += sz
 	}
-	if count >= maxRunes {
+	if cols >= maxCols {
 		b.WriteString(clrReset)
 	}
 	return b.String()
