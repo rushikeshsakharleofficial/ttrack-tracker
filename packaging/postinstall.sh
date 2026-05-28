@@ -22,6 +22,21 @@ if [ ! -f "$TTRACK_CONF" ]; then
     fi
 fi
 
+# Older/manual installs may have placed a full ttrackd unit in /etc/systemd,
+# which shadows the packaged unit in /lib/systemd and prevents upgrades from
+# applying service fixes. Retire only units that look like ttrack's own legacy
+# unit; administrators should use drop-ins for local overrides.
+ETC_UNIT=/etc/systemd/system/ttrackd.service
+PKG_UNIT=/lib/systemd/system/ttrackd.service
+if [ -f "$ETC_UNIT" ] && [ -f "$PKG_UNIT" ] &&
+    grep -q 'ttrack session recording collector' "$ETC_UNIT" &&
+    grep -q '^ExecStart=/usr/libexec/ttrackd$' "$ETC_UNIT"; then
+    if ! cmp -s "$ETC_UNIT" "$PKG_UNIT"; then
+        cp -a "$ETC_UNIT" "${ETC_UNIT}.bak.$(date +%Y%m%d%H%M%S)" || true
+        rm -f "$ETC_UNIT"
+    fi
+fi
+
 # Install ForceCommand sshd config to capture non-interactive SSH sessions.
 # Idempotent: only write if not already present (preserves manual edits).
 SSHD_MAIN=/etc/ssh/sshd_config
