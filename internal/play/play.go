@@ -351,7 +351,10 @@ func playInteractive(events []cast.Event, speed, maxIdle float64) error {
 			if visWidth(line) > w {
 				line = truncLine(line, w)
 			}
-			fmt.Fprint(os.Stdout, line+"\x1b[0m\r\n")
+			// \x1b[0m before: start each line with default attributes
+			// \x1b[0m\x1b[K after: reset SGR then erase trailing cells with
+			// default background, preventing color bleed into unfilled columns
+			fmt.Fprint(os.Stdout, "\x1b[0m"+line+"\x1b[0m\x1b[K\r\n")
 		}
 		drawScrollBar(total, scrollOffset, hh)
 	}

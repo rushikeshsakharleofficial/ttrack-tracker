@@ -38,6 +38,14 @@ func (b *lineBuf) feed(data string) {
 			seq, n, isSGR := parseESC(data, i)
 			if isSGR {
 				b.cur.WriteString(seq)
+			} else if isVerticalMove(seq) {
+				// Cursor-up / cursor-position sequences imply a new visual
+				// row. Commit the current partial line so scrollback lines
+				// map to actual screen rows instead of concatenating.
+				if b.cur.Len() > 0 {
+					b.lines = append(b.lines, b.cur.String())
+					b.cur.Reset()
+				}
 			}
 			if n == 0 {
 				n = 1
@@ -115,6 +123,20 @@ func stripAnsi(s string) string {
 		i++
 	}
 	return b.String()
+}
+
+// isVerticalMove returns true for escape sequences that move the cursor to a
+// different row: cursor-up (A), cursor-home/position (H), cursor-prev-line (F),
+// and ESC M (reverse index). These act as implicit line separators in feed().
+func isVerticalMove(seq string) bool {
+	if len(seq) == 2 && seq[0] == '\x1b' {
+		return seq[1] == 'M' // reverse index
+	}
+	if len(seq) < 3 || seq[0] != '\x1b' || seq[1] != '[' {
+		return false
+	}
+	final := seq[len(seq)-1]
+	return final == 'H' || final == 'A' || final == 'F'
 }
 
 // runeWidth returns the number of terminal columns occupied by r.
@@ -198,7 +220,7 @@ func truncLine(s string, maxCols int) string {
 		cols += rw
 		i += sz
 	}
-	if cols >= maxCols {
+	if i < len(s) { // stopped before end of string — line was truncated
 		b.WriteString(clrReset)
 	}
 	return b.String()
