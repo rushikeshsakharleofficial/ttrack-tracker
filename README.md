@@ -29,7 +29,7 @@ Record and replay Linux terminal sessions as asciinema-compatible casts, with an
 - [Audit mode (central root-only store)](#audit-mode-central-root-only-store)
 - [Auto-record on login](#auto-record-on-login-optional)
 - [Shell completion](#shell-completion)
-- [Configuration guide](#configuration-guide)
+- [Configuration](#configuration)
 - [File format](#file-format)
 - [Troubleshooting](#troubleshooting)
 - [Building and packaging](#building-and-packaging)
@@ -39,12 +39,15 @@ Record and replay Linux terminal sessions as asciinema-compatible casts, with an
 ## Features
 
 - **Record & replay** any interactive shell session (`script(1)` / `asciinema`-style).
-- **Full-screen player** for replay: a thin-line seek/progress bar, pause, variable speed, jump-to-command (detected from shell prompts), mouse click-to-seek, and a bar toggle for full-height playback.
+- **Full-screen player** for replay: a thin-line seek/progress bar, pause, variable speed, jump-to-command, mouse click-to-seek, and a bar toggle for full-height playback.
 - **asciinema v2 cast** output (local recordings are inspectable JSON-lines and play with `asciinema play`; central recordings are encrypted — `export` them first).
 - **Central audit store** via the `ttrackd` root daemon: all users' sessions in `/var/lib/ttrack`, `root:root 0700` — normal users cannot read recordings.
-- **Encrypted at rest** — central recordings are AES-256-GCM encrypted; `cat`/`strings`/`grep` on a `.cast` reveal only ciphertext. Readable solely with the root-only key via `ttrack`.
-- **Live tail** an in-progress session (`ttrack tail <id>`, root).
-- **Audit CLI**: list users, list a user's sessions, replay by id, tree view.
+- **Encrypted at rest** — central recordings are AES-256-GCM encrypted; `cat`/`strings`/`grep` on a `.cast` reveal only ciphertext.
+- **Live tail** an in-progress session (`ttrack tail -f <id>`, root); or show last N lines of any session (`ttrack tail [-n N] <id>`).
+- **Unified commands**: `ttrack play` auto-detects local file or central session ID; `ttrack ls --all` / `--user <name>` covers both local and central listings.
+- **Flexible search dates**: `--from`/`--to` accept any format `date -d` understands — `"yesterday"`, `"2 days ago"`, `"last week"`, or `"YYYY-MM-DD HH:MM"`.
+- **Config file** at `/etc/ttrack/ttrack.conf` with all defaults visible; `ttrack --check` validates and prints resolved values.
+- **Ansible tracking** — records playbook runs (plays, tasks, per-host status, output) on the controller via a callback plugin.
 - **Auto-record on login** via an optional `profile.d` hook (skips nested `sudo su -`).
 - **Fail-open**: if the daemon is down, recording falls back to a user-local file and is ingested into the central store when the daemon restarts.
 - **Bash tab-completion** for subcommands, flags, sessions, and users.
@@ -57,22 +60,27 @@ $ ttrack --help
 ttrack — Linux terminal session tracker
 
 usage:
-  ttrack rec [-q] [-o file] [cmd...]   record a shell session (default: $SHELL)
-  ttrack play [--speed N] file         replay a local recording
-  ttrack ls                            list your local recordings
+  ttrack rec [-q] [-o file] [cmd...]      record a shell session (default: $SHELL)
+  ttrack play [--speed N] <file|id>       replay local file or central session (auto-detect)
+  ttrack ls                               list local recordings
+  ttrack ls --all                         list all users in central store (root)
+  ttrack ls --user <name>                 list one user's sessions in central store (root)
 
-audit commands (read the central root-only store; run as root):
-  ttrack ls-user [username]            list users, or one user's sessions
-  ttrack play-user [--speed N] <id>    replay a session by id (any user)
-  ttrack tail <id>                     live-stream an in-progress session
-  ttrack tree                          users -> sessions tree
-  ttrack search [opts] <string>        find a string across recordings
-  ttrack export [-o file] <id>         decrypt a session to a plaintext cast
-  ttrack prune                         interactively delete recordings (by user/time)
+audit commands (central root-only store):
+  ttrack tail [-n N] <id>                 show last N lines of a session (default 20)
+  ttrack tail -f <id>                     live-stream an in-progress session (root)
+  ttrack tree                             users -> sessions tree (root)
+  ttrack search [opts] <string>           find a string across recordings (root)
+  ttrack export [-o file] <id>            decrypt a session to a plaintext cast (root)
+  ttrack prune                            interactively delete recordings (root)
+  ttrack ansible list [--user U]          list Ansible playbook runs (root)
+  ttrack ansible show <runid>             show tasks and recap for a run (root)
 
-  ttrack completion bash               print the bash completion script
+  ttrack completion bash                  print the bash completion script
+  ttrack version                          print version
+  ttrack --check                          validate config and show resolved values
 
-search opts: --from / --to <YYYY-MM-DD[ HH:MM]>, --user <name>, -i
+search opts: --from / --to <any 'date -d' format>, --user <name>, -i
 recordings in the central store are encrypted at rest (opaque to cat/strings)
 
 local recordings: $TTRACK_DIR or ~/.local/share/ttrack
@@ -103,7 +111,7 @@ curl -fLO "https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases/
 sudo apt install "./ttrack_${VER}_amd64.deb"
 ```
 
-**RHEL / Rocky / Fedora (.rpm):**
+**RHEL / Rocky / AlmaLinux / Fedora (.rpm):**
 
 ```bash
 VER=$(curl -fsSL https://api.github.com/repos/rushikeshsakharleofficial/ttrack-tracker/releases/latest | grep -oP '"tag_name":\s*"v\K[^"]+')
@@ -121,7 +129,7 @@ chmod +x ttrack && sudo install -m755 ttrack /usr/bin/ttrack
 
 > **Note:** CI publishes a new release on every push to `main`. The commands above always fetch the latest.
 
-Packages install `ttrack` to `/usr/bin`, the `ttrackd` daemon to `/usr/libexec`, a systemd unit, the bash completion, and the auto-record login hook. The post-install step creates `/var/lib/ttrack` (root-only) and enables `ttrackd`.
+Packages install `ttrack` to `/usr/bin`, the `ttrackd` daemon to `/usr/libexec`, a systemd unit, the bash completion, and the auto-record login hook. The post-install step creates `/var/lib/ttrack` (root-only), writes `/etc/ttrack/ttrack.conf` with all defaults visible, and enables `ttrackd`.
 
 ### From source
 
@@ -164,38 +172,37 @@ With no command, `ttrack rec` records your `$SHELL` interactively until you `exi
 | Command | Description |
 |:--------|:------------|
 | `ttrack rec [-q] [-o file] [cmd...]` | Record a session. Runs `$SHELL` (fallback `/bin/bash`) with no command. |
-| `ttrack play [--speed N] [--idle N] <file>` | Replay a recording with original timing. Resolves a path, a local `ls` id, or — run as root — a central-store session id (same as `play-user`). |
-| `ttrack ls` | List your local recordings (`STATUS`, `FILE`, `STARTED`, `DURATION`, `COMMAND`). |
+| `ttrack play [--speed N] [--idle N] <file\|id>` | Replay a recording. Auto-detects: existing local file → local play; otherwise → central store session ID (requires root). |
+| `ttrack ls` | List local recordings (`STATUS`, `FILE`, `STARTED`, `DURATION`, `COMMAND`). |
+| `ttrack ls --all` | List all users in the central store with session counts (root). |
+| `ttrack ls --user <name>` | List one user's sessions in the central store (root). |
+| `ttrack --check` | Validate `/etc/ttrack/ttrack.conf` and print all resolved values. |
 | `ttrack completion bash` | Print the bash completion script. |
-| `ttrack help [command]` | Overall usage, or one command's detailed help. `ttrack <command> --help` (or `help`) works too. |
+| `ttrack help [command]` | Overall usage, or one command's detailed help. |
 
 `rec` flags: `-o <file>` writes a local file at that path; `-q` (or `TTRACK_QUIET=1`) suppresses the recording banner and saved-path message.
 
-`play` flags: `--speed N` playback multiplier (default `1.0`); `--idle N` caps idle gaps to N seconds — default `0` = **exact original timing** (idle/waits reproduced in full, like a video); set `N`>0 to compress pauses for quick review.
+`play` flags: `--speed N` playback multiplier (default `1.0`); `--idle N` caps idle gaps to N seconds — default `0` = exact original timing.
 
-**Player UI.** On a terminal, `play` and `play-user` open a full-screen player (alternate screen). The recording renders above a plain-text status bar:
+**Player UI.** On a terminal, `play` opens a full-screen player (alternate screen):
 
 ```
  > 01:23 / 05:00 [####      ]  27%  1x   <-/-> seek  pgup scroll  g goto  spc play  q quit
 ```
-
-`>` = playing, `||` = paused. The `[####   ]` bar fills proportionally. At the end it holds on the final frame until you quit.
 
 Controls:
 
 | Key / action | Effect |
 |:----|:-------|
 | `space` | Pause / resume |
-| `→` / `←` | Seek forward / backward 5 s (re-renders from that point) |
+| `→` / `←` | Seek forward / backward 5 s |
 | `↑` / `↓` | Double / halve playback speed (range: 1/64× – 64×) |
-| `g` | Go to time — type `MM:SS` or seconds, Enter to jump, Esc to cancel. Shows as `goto: 1:23_` in the bar while typing. |
-| `pgup` | Enter scroll view — browse past output a page at a time; any other key exits. |
+| `g` | Go to time — type `MM:SS` or seconds, Enter to jump |
+| `pgup` | Enter scroll view — browse past output a page at a time |
 | click the bar | Seek to that point (Shift+click selects text instead) |
-| `b` | Hide/show the status bar — full-height playback (useful when a recording draws its own progress bar, e.g. apt/dpkg) |
+| `b` | Hide/show the status bar |
 | `0` | Restart from the beginning |
 | `q` / `Ctrl-C` | Quit |
-
-The player is best for line-oriented recordings (shells, package installs). Recordings of full-screen TUIs (vim, htop) render exactly in the main view; the scroll view is approximate for those. When output is piped or redirected, `play` runs straight through without the player UI (`--idle` then applies).
 
 ### Audit commands (root)
 
@@ -203,14 +210,15 @@ These read the central root-only store and require root:
 
 | Command | Description |
 |:--------|:------------|
-| `ttrack ls-user` | List users that have recordings and their session counts. |
-| `ttrack ls-user <username>` | List a user's sessions. |
-| `ttrack play-user [--speed N] <sessionid>` | Replay a session by id, searched across all users. |
-| `ttrack tail <sessionid>` | Live-stream an in-progress session from the daemon. |
+| `ttrack ls --all` | List all users and their session counts. |
+| `ttrack ls --user <name>` | List a user's sessions (STATUS, TYPE, SESSION, STARTED, DURATION, COMMAND). |
+| `ttrack play <sessionid>` | Replay a session by id, searched across all users (auto-detect). |
+| `ttrack tail [-n N] <id>` | Show last N lines of a session's recorded output (default 20). |
+| `ttrack tail -f <id>` | Live-stream an in-progress session from the daemon. |
 | `ttrack tree` | Print a users → sessions tree. |
-| `ttrack search [--from T] [--to T] [--user U] [-i] <pattern>` | Find a string across recordings (command + output), with `--from`/`--to`/`--user`/`-i`. `--all` lists every session. |
-| `ttrack export [-o file] <sessionid>` | Decrypt a recording to a plaintext asciinema cast (for offline use / `asciinema play`). |
-| `ttrack prune [--yes]` | Interactively delete recordings by user and time (`all` / `days N` / `range FROM TO`). Shows a storage overview, requires the prune password (set on first use), never deletes active sessions, previews + confirms. |
+| `ttrack search [--from T] [--to T] [--user U] [-i] <pattern>` | Find a string across recordings. `--from`/`--to` accept any `date -d` format. `--all` lists every session. |
+| `ttrack export [-o file] <id>` | Decrypt a recording to a plaintext asciinema cast. |
+| `ttrack prune [--yes]` | Interactively delete recordings by user and time. |
 
 ## Audit mode (central root-only store)
 
@@ -220,12 +228,12 @@ to it over `/run/ttrackd.sock` and the recording is written by root to
 users cannot read other users' — or their own — recordings.
 
 ```text
-$ sudo ttrack ls-user
-USER                  SESSIONS
-root                  1
-alice                 7
+$ sudo ttrack ls --all
+USER                  SESSIONS   LAST ACTIVE
+root                  1          2026-05-28 17:09
+alice                 7          2026-05-27 14:03
 
-$ sudo ttrack ls-user alice
+$ sudo ttrack ls --user alice
 STATUS   TYPE             SESSION                       STARTED              DURATION   COMMAND
 SAVED    non-interactive  20260526T145020-1413240.cast  2026-05-26 14:50:19  3s         /bin/bash -c echo deploy-step-1; whoami
 
@@ -237,14 +245,9 @@ $ sudo ttrack tree
    └─ 20260526T145020-1413240.cast  [SAVED non-interactive]  2026-05-26 14:50:19  3s  /bin/bash -c echo deploy-step-1; whoami
 ```
 
-The `TYPE` column distinguishes an **interactive** login shell from a
-**non-interactive** command session (`<shell> -c …`, e.g. an `ssh host "cmd"`
-recorded via the `ForceCommand` wrapper). `tree` shows the same as a `[STATUS TYPE]` tag.
-`DURATION` is the recorded length (last event timestamp); an in-progress session
-shows elapsed-so-far with a trailing `+`.
+The `TYPE` column distinguishes an **interactive** login shell from a **non-interactive** command session. `DURATION` is the recorded length; an in-progress session shows elapsed-so-far with a trailing `+`.
 
-Search recordings for a string (e.g. a command that was run), optionally within a
-time window:
+Search recordings for a string, with flexible date filtering:
 
 ```text
 $ sudo ttrack search nginx
@@ -252,15 +255,20 @@ user=alice  when=2026-05-26 14:59:18  session=20260526T145918-1420180
     cmd: /bin/bash -c echo starting deploy; systemctl restart nginx; echo deploy done
     > Failed to restart nginx.service: Unit nginx.service not found.
 
-$ sudo ttrack search --from "2026-05-26 09:00" --to "2026-05-26 18:00" --user alice -i DEPLOY
+$ sudo ttrack search --from "2 days ago" --to yesterday --user alice -i DEPLOY
 user=alice  when=2026-05-26 14:59:18  session=20260526T145918-1420180
-    cmd: /bin/bash -c echo starting deploy; systemctl restart nginx; echo deploy done
-    > starting deploy
-    > deploy done
+    cmd: /bin/bash -c echo starting deploy; ...
 ```
 
-Each match shows **which user** ran it (`user=`) and **when** the session started
-(`when=`), the recorded command, and matching output lines.
+`--from`/`--to` accept any format the system `date -d` command understands: `"yesterday"`, `"2 days ago"`, `"last week"`, `"2026-05-28"`, `"2026-05-28 17:00"`.
+
+Show the tail of a completed session, or watch a live one:
+
+```bash
+sudo ttrack tail alice/20260526T145020-1413240.cast      # last 20 lines
+sudo ttrack tail -n 50 20260526T145020-1413240.cast     # last 50 lines
+sudo ttrack tail -f 20260526T145020-1413240.cast        # live stream
+```
 
 Delete old recordings interactively:
 
@@ -271,7 +279,7 @@ Prune which user? [all / <username>] alice
 What to delete:
   all              every session for the selected user(s)
   days N           sessions older than N days
-  range FROM TO    sessions started in [FROM, TO]  (YYYY-MM-DD[ HH:MM])
+  range FROM TO    sessions started in [FROM, TO]
 Selection? days 90
 
 Will delete 4 session(s), 2.1 MiB total:
@@ -281,24 +289,11 @@ Delete these 4 session(s)? [yes/NO] yes
 pruned 4 session(s), freed 2.1 MiB
 ```
 
-Other audit commands:
-
-```bash
-sudo systemctl status ttrackd        # daemon state
-sudo ttrack play-user <sessionid>    # replay any session
-sudo ttrack tail <sessionid>         # watch a live session
-```
-
-**Fail-open:** if the daemon is unreachable, `ttrack rec` records to the user-local
-directory; on its next startup `ttrackd` ingests those files into the central store
-(source files are opened `O_NOFOLLOW` and verified regular, so a user cannot symlink
-a root-readable target into the store).
-
 ### Encryption at rest
 
 Central recordings are encrypted with AES-256-GCM. On disk a `.cast` is opaque —
 `cat`, `strings`, and `grep` show only ciphertext. `ttrack` decrypts transparently
-for `play-user`, `search`, `tail`, and `export` using the key at
+for `play`, `search`, `tail`, and `export` using the key at
 `/var/lib/ttrack/.ttrack.key` (`root:root 0600`), created by the daemon on first run.
 
 ```text
@@ -309,24 +304,13 @@ $ sudo ttrack export -o session.cast 20260526T151022-1426734
 exported plaintext cast to session.cast      # now asciinema-compatible
 ```
 
-The key is **unique per server** (random, generated by the daemon on first run) and
-set **immutable** (`chattr +i`): it cannot be deleted, renamed, or modified by
-`rm`/`vi`/`sed`/`>`/`tee` — even by root — until someone runs `chattr -i`. It is
-`0600`, so non-root `cat`/`strings` are denied outright.
+The key is **unique per server** and set **immutable** (`chattr +i`): it cannot be deleted, renamed, or modified by `rm`/`vi`/`sed`/`>`/`tee` — even by root — until someone runs `chattr -i`.
 
-> **Honest scope:** this means *no plaintext session data sits on disk*, the files
-> are unreadable without the key, and the key cannot be casually altered or deleted —
-> not that "only ttrack can ever read them." Root can still `chattr -i` and read the
-> key, and root can read any `.cast` via the key (root bypasses everything). **Back up
-> `/var/lib/ttrack/.ttrack.key`** — if it is lost, every encrypted recording is
-> permanently unreadable. The daemon refuses to start if the key is missing while
-> encrypted recordings exist. To rotate or remove the key, run `chattr -i` first.
+> **Back up `/var/lib/ttrack/.ttrack.key`** — if it is lost, every encrypted recording is permanently unreadable. The daemon refuses to start if the key is missing while encrypted recordings exist.
 
-**Integrity note:** this provides root-only *access* to recordings plus live tail. It
-is *not* tamper-proof against a malicious user, who could avoid `ttrack` entirely
-(run another binary, `pkill ttrack`, bypass `profile.d`). Non-circumventable capture
-requires PAM- or kernel-stage hooks, which this project does not implement. The
-user-local fail-open fallback is plaintext until the daemon ingests and encrypts it.
+**Integrity note:** this provides root-only access to recordings plus live tail. It is not tamper-proof against a malicious user who could avoid `ttrack` entirely. Non-circumventable capture requires PAM- or kernel-stage hooks, which this project does not implement.
+
+**Fail-open:** if the daemon is unreachable, `ttrack rec` records to the user-local directory; on its next startup `ttrackd` ingests those files into the central store.
 
 ## Auto-record on login (optional)
 
@@ -337,15 +321,11 @@ out when the recorded shell exits. To enable manually:
 sudo install -m644 scripts/profile.d/ttrack-autorec.sh /etc/profile.d/ttrack-autorec.sh
 ```
 
-The hook only triggers for interactive shells with a real TTY, skips when `ttrack` is
-absent, and skips nested shells (`sudo su -`, `su -`, subshells) by detecting a
-`ttrack` process in the ancestry — a session is recorded once. It is fail-open: if the
-recorder cannot start, a normal shell continues. Remove the file to disable.
+The hook only triggers for interactive shells with a real TTY, skips when `ttrack` is absent, and skips nested shells (`sudo su -`, `su -`, subshells) by detecting a `ttrack` process in the ancestry. It is fail-open: if the recorder cannot start, a normal shell continues. Remove the file to disable.
 
 ## Record non-interactive SSH (optional)
 
-The login hook records interactive sessions only. To also record **non-interactive**
-SSH commands (`ssh host "cmd"`), enable the sshd `ForceCommand` wrapper:
+The login hook records interactive sessions only. To also record **non-interactive** SSH commands (`ssh host "cmd"`), enable the sshd `ForceCommand` wrapper. The package installs it automatically if `/etc/ssh/sshd_config.d/` exists (and adds the `Include` directive to the main `sshd_config` if needed). To enable manually:
 
 ```bash
 sudo cp /usr/share/doc/ttrack/sshd-forcecommand.conf.example \
@@ -356,12 +336,8 @@ sudo sshd -t && sudo systemctl reload ssh
 - `scp` / `sftp` / `rsync` / git transfers pass through untouched.
 - Interactive logins keep recording via the profile.d hook (no double-wrap).
 - Fail-open: if anything is off, the command runs normally — SSH is never blocked.
-- Caveat: recorded non-interactive commands run under a PTY, so output is
-  line-cooked (CR added) and a TTY is present — a few tools behave differently.
 
-Exclude an admin/automation account (skip recording its commands; its interactive
-logins are still recorded by the hook) with a `Match` block instead of the global
-`ForceCommand`:
+Exclude an account with a `Match` block:
 
 ```text
 Match User *,!adminuser
@@ -372,94 +348,87 @@ Disable by removing `/etc/ssh/sshd_config.d/zz-ttrack.conf` and reloading sshd.
 
 ## Shell completion
 
-Bash completion is installed by the package to
-`/usr/share/bash-completion/completions/ttrack`. To enable manually:
+Bash completion is installed by the package to `/usr/share/bash-completion/completions/ttrack`. To enable manually:
 
 ```bash
 ttrack completion bash | sudo tee /usr/share/bash-completion/completions/ttrack
 ```
 
-It completes subcommands, flags, local sessions (for `play`), and — when run as root —
-users and central session ids (for `ls-user`, `play-user`, `tail`).
+It completes subcommands, flags, local sessions (for `play`), and — when run as root — users and central session ids.
 
 ## Configuration
 
-ttrack reads `/etc/ttrack/ttrack.conf` on startup (override path with `TTRACK_CONFIG`).  
-All keys are optional — built-in defaults are used when the file is absent.
+ttrack reads `/etc/ttrack/ttrack.conf` on startup (override path with `TTRACK_CONFIG`). The file ships with all defaults active (uncommented) so it is immediately editable. Validate with:
+
+```bash
+ttrack --check
+```
+
+Output:
+
+```
+ttrack: reading config from /etc/ttrack/ttrack.conf
+socket_path            = /run/ttrackd.sock
+central_dir            = /var/lib/ttrack
+key_file               = .ttrack.key  (resolved: /var/lib/ttrack/.ttrack.key)
+dial_timeout_sec       = 1s
+eof_grace_ms           = 500ms
+ansible_output_cap     = 8192
+scroll_buffer          = 32768
+ttrack: config OK
+```
+
+### Config keys
 
 | Key | Default | Env override | Purpose |
 |:----|:--------|:------------|:--------|
 | `socket_path` | `/run/ttrackd.sock` | `TTRACKD_SOCK` | Daemon Unix socket |
 | `central_dir` | `/var/lib/ttrack` | `TTRACK_CENTRAL_DIR` | Root of central session store |
-| `key_file` | `.ttrack.key` | `TTRACK_KEY_FILE` | Encryption key path (relative to central_dir or absolute) |
+| `key_file` | `.ttrack.key` | `TTRACK_KEY_FILE` | Encryption key path (relative to `central_dir` or absolute) |
 | `dial_timeout_sec` | `1` | `TTRACK_DIAL_TIMEOUT_SEC` | Seconds to wait when connecting to daemon |
 | `eof_grace_ms` | `500` | `TTRACK_EOF_GRACE_MS` | Ms before force-closing PTY on stdin EOF |
 | `ansible_output_cap` | `8192` | `TTRACK_ANSIBLE_OUTPUT_CAP` | Max bytes stored per Ansible task output |
+| `scroll_buffer` | `32768` | `TTRACK_SCROLL_BUFFER` | PTY read buffer size in bytes (min 4096) |
 
-See `/usr/share/ttrack/ttrack.conf.example` for an annotated sample.
-
-## Configuration guide
-
-`ttrack` and `ttrackd` need no config file — behavior is controlled by environment
-variables, filesystem locations, and the systemd unit.
+Restart `ttrackd` after editing: `sudo systemctl restart ttrackd`.
 
 ### Environment variables
 
 | Variable | Default | Used by | Description |
 |:---------|:--------|:--------|:------------|
 | `TTRACK_DIR` | `~/.local/share/ttrack` | `ttrack` | User-local recordings dir (fail-open fallback + local `ls`/`play`). |
-| `TTRACK_CENTRAL_DIR` | `/var/lib/ttrack` | `ttrack`, `ttrackd` | Central root-only store. |
-| `TTRACKD_SOCK` | `/run/ttrackd.sock` | `ttrack`, `ttrackd` | Daemon unix socket. |
 | `TTRACK_QUIET` | unset | `ttrack rec` | Any non-empty value suppresses the banner + saved-path message. |
 | `SHELL` | `/bin/bash` | `ttrack rec` | Shell launched when no command is given. |
 
-To point a whole host at a different store, set `TTRACK_CENTRAL_DIR` and `TTRACKD_SOCK`
-in the systemd unit (see below) **and** in users' environment so `ttrack rec` reaches
-the same daemon.
-
-### Filesystem layout and permissions
+### Filesystem layout
 
 | Path | Owner / mode | Purpose |
 |:-----|:-------------|:--------|
 | `/usr/bin/ttrack` | `root 0755` | CLI |
 | `/usr/libexec/ttrackd` | `root 0755` | daemon |
-| `/var/lib/ttrack/` | `root:root 0700` | central store (normal users cannot enter) |
+| `/etc/ttrack/ttrack.conf` | `root 0644` | runtime config (conffile — preserved on upgrade) |
+| `/var/lib/ttrack/` | `root:root 0700` | central store |
 | `/var/lib/ttrack/<user>/<id>.cast` | `root:root 0600` | encrypted recording |
 | `/var/lib/ttrack/.ttrack.key` | `root:root 0600`, `chattr +i` | per-server AES key (immutable) |
-| `/run/ttrackd.sock` | `root 0666` | recorder connect socket (file access is what enforces privacy, not the socket) |
+| `/run/ttrackd.sock` | `root 0666` | recorder connect socket |
 | `/etc/profile.d/ttrack-autorec.sh` | `root 0644` | optional auto-record login hook |
 | `~/.local/share/ttrack/` | the user | local fail-open recordings |
-
-### Encryption key
-
-The daemon creates a unique random key per host on first start. It is `0600` and set
-immutable (`chattr +i`) so it cannot be removed or modified by `rm`/`vi`/`sed`/`>`/`tee`,
-even by root, until `chattr -i`. **Back it up** — losing it makes every encrypted
-recording unreadable. The daemon refuses to start if the key is missing while encrypted
-recordings exist. To rotate: `chattr -i`, move recordings aside or `export` them, remove
-the key, restart the daemon (it generates a fresh one).
 
 ### Daemon service
 
 ```bash
 sudo systemctl status ttrackd
 sudo systemctl restart ttrackd
-sudo journalctl -u ttrackd --no-pager        # logs, incl. the key-backup warning
+sudo journalctl -u ttrackd --no-pager
 ```
 
-To override the store/socket, add a drop-in:
+To override settings at the systemd level (takes precedence over config file):
 
 ```bash
 sudo systemctl edit ttrackd
 # [Service]
 # Environment=TTRACK_CENTRAL_DIR=/srv/ttrack
-# Environment=TTRACKD_SOCK=/run/ttrackd.sock
 ```
-
-### Shell completion
-
-Installed to `/usr/share/bash-completion/completions/ttrack`. Enable manually with
-`ttrack completion bash | sudo tee /usr/share/bash-completion/completions/ttrack`.
 
 ## File format
 
@@ -472,30 +441,11 @@ Recordings are asciinema v2 cast files (UTF-8, JSON-lines):
 
 The first line is a header; each subsequent line is `[time_seconds, "o", data]`.
 Local (plaintext) recordings are viewable with `asciinema cat` and playable with
-`asciinema play`. Central recordings are encrypted — run `ttrack export` first to
-get an asciinema-compatible plaintext cast.
+`asciinema play`. Central recordings are encrypted — run `ttrack export` first.
 
 ## Troubleshooting
 
-**Replaying a full-screen app (vim, less, htop) looks fine.** `ttrack play`
-reproduces TUI redraws exactly. During replay it disables terminal echo and drains
-stdin so the terminal's replies to recorded query sequences (color/cursor reports)
-are not printed as garbage or left on the shell prompt. Multibyte/box-drawing
-characters survive even when a PTY read splits a rune across chunks. If an *old*
-recording (made before these fixes) still shows `�` or stray text, re-record it.
-
-**Scroll view shows garbled or concatenated lines.** The scrollback viewer (`pgup`
-during replay) parses terminal output heuristically. Cursor-movement sequences
-(`\x1b[H`, `\x1b[A`, `\x1b[F`, `\x1bM`) are treated as line breaks so that
-tool output that repaints lines in-place (dpkg progress, apt, bash prompts) appears
-correctly. Full-screen TUIs (vim, htop) draw to arbitrary cells — they may look
-approximate in scroll view, but the main player (non-scroll mode) renders them
-exactly.
-
-**Colors bleed into empty cells in scroll view.** The scroll renderer resets SGR
-attributes before and after each line (`\x1b[0m`) and erases trailing cells with the
-default background (`\x1b[K`). If you see color bleed, you are on an older build —
-upgrade to v1.0.2+.
+**`ttrack --check` shows config file not found.** The daemon still uses built-in defaults. Install the package to get `/etc/ttrack/ttrack.conf`, or create it manually by copying `/usr/share/ttrack/ttrack.conf.example`.
 
 **`ttrack` hangs or does not record.** Check the daemon:
 
@@ -504,11 +454,15 @@ sudo systemctl status ttrackd
 sudo journalctl -u ttrackd --since '5 min ago' --no-pager
 ```
 
-If the daemon is stopped, `ttrack rec` still works (fail-open: saves to
-`~/.local/share/ttrack`). Start `ttrackd` and those files are ingested on next start.
+If the daemon is stopped, `ttrack rec` still works (fail-open: saves to `~/.local/share/ttrack`). Start `ttrackd` and those files are ingested on next start.
 
-**`man ttrack` shows an old version.** A manual install may have left a stale man page
-at `/usr/local/man/man1/ttrack.1` which shadows the package-installed one. Remove it:
+**`ttrack play` says "no such session".** The argument is treated as a central store session ID when no local file matches. Run `sudo ttrack ls --all` to list available IDs, or pass the full local file path.
+
+**Replaying a full-screen app (vim, less, htop) looks fine.** `ttrack play` reproduces TUI redraws exactly. Multibyte/box-drawing characters survive even when a PTY read splits a rune across chunks.
+
+**Scroll view shows garbled lines.** The scrollback viewer (`pgup` during replay) parses terminal output heuristically. Cursor-movement sequences are treated as line breaks. Full-screen TUIs may look approximate in scroll view, but the main player renders them exactly.
+
+**`man ttrack` shows an old version.** A manual install may have left a stale man page at `/usr/local/man/man1/ttrack.1`. Remove it:
 
 ```bash
 sudo rm -f /usr/local/man/man1/ttrack.1
@@ -528,11 +482,7 @@ make VERSION=1.2.3 packages
 
 Packaging uses [`nfpm`](https://github.com/goreleaser/nfpm) (`go install` it first).
 
-**Releases are automated.** Every push to `main` runs the `Auto Release` workflow,
-which bumps the patch version from the latest tag and publishes a GitHub Release with
-`rpm`, `deb`, the static binary, and `SHA256SUMS`. Pushing an explicit `v*` tag also
-publishes a release (for deliberate minor/major bumps). Grab the latest from the
-[releases page](https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases).
+**Releases are automated.** Every push to `main` runs the `Auto Release` workflow, which bumps the patch version from the latest tag and publishes a GitHub Release with `rpm`, `deb`, the static binary, and `SHA256SUMS`.
 
 ## Testing
 
@@ -543,21 +493,23 @@ make test                  # unit tests (go test ./...)
 ## Project structure
 
 ```text
-cmd/ttrack         CLI (rec/play/ls/ls-user/play-user/tail/tree/search/export)
+cmd/ttrack         CLI (rec/play/ls/tail/tree/search/export/ansible/--check)
 cmd/ttrackd        root collector daemon
 internal/cast      asciinema v2 cast read/write
 internal/crypto    at-rest AES-256-GCM encryption (+ tests)
+internal/config    runtime config file parser + singleton
 internal/record    PTY capture for `ttrack rec`
 internal/play      replay (snapshot-bounded)
 internal/store     storage paths + transparent decrypt
 internal/audit     root-only audit commands
 internal/daemon    ttrackd socket server, live tail fan-out, ingest, key mgmt
+internal/ansible   Ansible tracking (model, ingest, commands)
 internal/complete  shell completion
 ```
 
 ## Ansible Tracking
 
-ttrack can record Ansible playbook runs on the **controller** host (the machine running `ansible-playbook`). Each task — its name, module, host, status (`ok`/`changed`/`failed`/`unreachable`/`skipped`), output, and rc — is captured and stored encrypted in the central store alongside terminal sessions.
+ttrack can record Ansible playbook runs on the **controller** host (the machine running `ansible-playbook`). Each task — its name, module, host, status (`ok`/`changed`/`failed`/`unreachable`/`skipped`), output, and rc — is captured and stored encrypted in the central store.
 
 ### Enable the callback plugin
 
@@ -584,19 +536,19 @@ sudo ttrack ansible list
 sudo ttrack ansible show <runid>
 ```
 
-Example output of `ttrack ansible list`:
+Example `ttrack ansible list`:
 
 ```
 RUN                           PLAYBOOK             CONTROLLER   OK     CHG    FAIL   STARTED              HOSTS
 20260527T140300-12345         deploy.yml           ctrl.host    8      3      1      2026-05-27 14:03:00  web1,web2
 ```
 
-Example output of `ttrack ansible show 20260527T140300-12345`:
+Example `ttrack ansible show 20260527T140300-12345`:
 
 ```
 Playbook : deploy.yml
 Run ID   : 20260527T140300-12345
-...
+
 PLAY [Install web server]
   ✓ web1          install nginx            (ansible.builtin.dnf) @14:03:01
   ✗ web2          fail intentionally       (ansible.builtin.command) @14:03:03
@@ -613,43 +565,16 @@ If `ttrackd` is unreachable, the run is saved to `~/.local/share/ttrack/ansible/
 
 ### Limitation
 
-Only controllers with `ttrack` installed produce Ansible records. Managed hosts still receive raw Ansible SSH execs (useful if the sshd `ForceCommand` wrapper is configured, but those carry no task name or status).
-
-## What's new in v1.0
-
-**v1.0 is a stability and UX milestone.** Changes since v0.x:
-
-### Player UI (plain-text, no color dependencies)
-- Status bar redesigned: plain ASCII `[####   ]` progress bar, `>` / `||` play/pause icons — no ANSI colors, legible on any terminal and with any color scheme.
-- Scroll indicator redesigned: `[SCROLL] -N/M   pgdn/down/wheel: scroll down   any other key: exit` — plain text, no color.
-- Scroll view: fixed SGR color bleed into trailing cells (`\x1b[0m\x1b[K` after each line).
-- Scroll view: cursor-movement escape sequences (`\x1b[H`, `\x1b[A`, `\x1b[F`, `\x1bM`) now act as implicit line breaks so tool output that repaints its line (dpkg, apt, bash prompts) renders as separate lines instead of concatenating.
-- Wide-char / CJK / emoji display: `truncLine` and `visWidth` use an East Asian Width column table instead of rune count, so multi-column characters are truncated at the correct column boundary.
-
-### Daemon stability
-- Accept loop now distinguishes transient errors (EINTR, EAGAIN, EMFILE — log and retry) from fatal errors (closed listener — return and restart).
-- `registry.get()` upgraded from `sync.Mutex` to `sync.RWMutex`: concurrent `tail` readers no longer block each other.
-- Session file open failures now report `ERR session file unavailable` to the connecting client and log to stderr instead of silently dropping the connection.
-- Ansible file open failures report `ERR ansible file unavailable` similarly.
-- Unix socket type-assertion uses comma-ok pattern with a fallback log+close instead of panicking.
-
-### CI / deploy
-- Auto-deploy to jump server uses `dpkg -i` (handles fresh install and upgrade); skips if the same version is already installed.
-- Pipeline uses `bash /tmp/deploy-script.sh` pattern (not stdin pipe) so it works correctly through the `ForceCommand` SSH wrapper.
-- Node.js deprecation warnings silenced (`FORCE_JAVASCRIPT_ACTIONS_TO_NODE24`).
-- SonarQube scan action updated to v6.
+Only controllers with `ttrack` installed produce Ansible records. Managed hosts still receive raw Ansible SSH execs (captured by the sshd `ForceCommand` wrapper if configured, but those carry no task name or status).
 
 ## Contributing
 
-ttrack is **100% open source** and community-driven — contributions of all sizes are
-welcome.
+ttrack is **100% open source** and community-driven — contributions of all sizes are welcome.
 
 - **Found a bug or want a feature?** [Open an issue](https://github.com/rushikeshsakharleofficial/ttrack-tracker/issues).
-- **Want to contribute code?** Fork, branch, and open a pull request. Run `make fmt`,
-  `make vet`, `make test`, `make build` first — CI enforces all of them.
+- **Want to contribute code?** Fork, branch, and open a pull request. Run `make fmt`, `make vet`, `make test`, `make build` first — CI enforces all of them.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide (bug reports, PR workflow,
-project layout, tests).
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide (bug reports, PR workflow, project layout, tests).
 
 ## License
 
