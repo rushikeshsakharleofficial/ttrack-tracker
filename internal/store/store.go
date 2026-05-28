@@ -241,9 +241,10 @@ func Header(path string) (cast.Header, error) { return readHeader(path) }
 // Started formats a header's start time (exported for CLI use).
 func Started(h cast.Header) string { return started(h) }
 
-// Duration returns the recording's length formatted (e.g. "1m05s"), measured
-// as the timestamp of its last event. Reads the cast bounded to its size at
-// open, so an in-progress session reports elapsed-so-far. "-" if unreadable.
+// Duration returns the recording's length formatted (e.g. "1m05s").
+// For ACTIVE sessions it returns live elapsed time from the cast header's
+// start timestamp so idle shells don't show a frozen "last activity" value.
+// For completed sessions it returns the last event timestamp. "-" if unreadable.
 func Duration(path string) string {
 	rc, err := OpenCastSnapshot(path)
 	if err != nil {
@@ -251,7 +252,8 @@ func Duration(path string) string {
 	}
 	defer rc.Close()
 	r := bufio.NewReader(rc)
-	if _, err := cast.ReadHeader(r); err != nil {
+	hdr, herr := cast.ReadHeader(r)
+	if herr != nil {
 		return "-"
 	}
 	var last float64
@@ -261,6 +263,15 @@ func Duration(path string) string {
 			break
 		}
 		last = ev.Time
+	}
+	// For ACTIVE sessions use wall-clock elapsed from the session start time
+	// recorded in the cast header. The last-event offset is frozen whenever
+	// the shell is idle, making it useless as a "duration so far" indicator.
+	if isActive(path) && hdr.Timestamp > 0 {
+		elapsed := time.Since(time.Unix(hdr.Timestamp, 0)).Seconds()
+		if elapsed > last {
+			return humanDuration(elapsed) + "+"
+		}
 	}
 	return humanDuration(last)
 }
