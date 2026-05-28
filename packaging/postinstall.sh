@@ -20,7 +20,7 @@ fi
 # Install ForceCommand sshd config to capture non-interactive SSH sessions.
 # Idempotent: only write if not already present (preserves manual edits).
 SSHD_CONF=/etc/ssh/sshd_config.d/zz-ttrack.conf
-if [ ! -f "$SSHD_CONF" ]; then
+if [ ! -f "$SSHD_CONF" ] && [ -d /etc/ssh/sshd_config.d ]; then
     cat > "$SSHD_CONF" << 'SSHD_EOF'
 # Installed by ttrack package. Remove this file to disable SSH session recording.
 # The wrapper is fail-open: scp/sftp/rsync pass through untouched.
