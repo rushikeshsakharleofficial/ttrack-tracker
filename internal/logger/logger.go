@@ -57,7 +57,11 @@ func TeeToFile(path string) (func() error, error) {
 	if path == "" {
 		return func() error { return nil }, nil
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		return nil, err
+	}
+	if err := os.Chmod(dir, 0o750); err != nil {
 		return nil, err
 	}
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o640)

@@ -13,6 +13,8 @@ RestartSec=2
 # spool files during startup ingest.
 User=root
 # Hardening: it only needs its socket, the central store, and user home spools.
+LogsDirectory=ttrack
+LogsDirectoryMode=0750
 ProtectSystem=full
 ReadWritePaths=/var/lib/ttrack /var/log/ttrack /var/run
 NoNewPrivileges=yes

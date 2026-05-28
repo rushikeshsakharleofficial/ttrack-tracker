@@ -41,3 +41,45 @@ func TestTeeToFileCreatesParentAndWritesLog(t *testing.T) {
 		t.Fatalf("stderr missing message: %q", stderr.String())
 	}
 }
+
+func TestTeeToFileRepairsExistingDirectoryAndFileModes(t *testing.T) {
+	var stderr bytes.Buffer
+	log.SetOutput(&stderr)
+	log.SetFlags(0)
+	t.Cleanup(func() {
+		log.SetOutput(os.Stderr)
+		log.SetFlags(log.LstdFlags)
+	})
+
+	dir := filepath.Join(t.TempDir(), "ttrack")
+	if err := os.MkdirAll(dir, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "ttrack.log")
+	if err := os.WriteFile(path, []byte("old\n"), 0o666); err != nil {
+		t.Fatal(err)
+	}
+
+	closeLog, err := TeeToFile(path)
+	if err != nil {
+		t.Fatalf("TeeToFile() error = %v", err)
+	}
+	if err := closeLog(); err != nil {
+		t.Fatalf("close log: %v", err)
+	}
+
+	dirInfo, err := os.Stat(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := dirInfo.Mode().Perm(); got != 0o750 {
+		t.Fatalf("directory mode = %o, want 750", got)
+	}
+	fileInfo, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := fileInfo.Mode().Perm(); got != 0o640 {
+		t.Fatalf("file mode = %o, want 640", got)
+	}
+}
