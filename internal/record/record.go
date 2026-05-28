@@ -101,11 +101,27 @@ func Run(args []string) error {
 	restore := makeRawRestore(int(os.Stdin.Fd()))
 	defer restore()
 
+	// Forward SIGHUP (SSH disconnect) to the child process group so it exits
+	// cleanly instead of leaving ttrack rec blocked in cmd.Wait() forever.
+	hup := make(chan os.Signal, 1)
+	signal.Notify(hup, syscall.SIGHUP)
+	go func() {
+		if _, ok := <-hup; ok {
+			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGHUP)
+		}
+	}()
+
 	start := time.Now()
 	var wg sync.WaitGroup
 
 	// Local stdin -> PTY (user keystrokes). Not recorded.
-	go func() { _, _ = io.Copy(ptmx, os.Stdin) }()
+	// When stdin closes (e.g. pipe EOF from `ssh host cmd` with no TTY),
+	// write Ctrl-D (0x04) to the PTY so the shell sees EOF and exits cleanly
+	// instead of blocking forever waiting for more input.
+	go func() {
+		_, _ = io.Copy(ptmx, os.Stdin)
+		_, _ = ptmx.Write([]byte{4}) // Ctrl-D = EOF to shell
+	}()
 
 	// PTY -> local stdout + recording.
 	wg.Add(1)
@@ -114,6 +130,8 @@ func Run(args []string) error {
 	waitErr := cmd.Wait()
 	signal.Stop(winch)
 	close(winch)
+	signal.Stop(hup)
+	close(hup)
 	_ = ptmx.Close() // unblock the reader goroutine
 	wg.Wait()
 	_ = cw.Close()
