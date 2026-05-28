@@ -7,6 +7,16 @@ mkdir -p /var/lib/ttrack
 chown root:root /var/lib/ttrack
 chmod 0700 /var/lib/ttrack
 
+# Install default config on first deploy (never overwrite existing config).
+TTRACK_CONF=/etc/ttrack/ttrack.conf
+if [ ! -f "$TTRACK_CONF" ]; then
+    mkdir -p /etc/ttrack
+    if [ -f /usr/share/ttrack/ttrack.conf.example ]; then
+        cp /usr/share/ttrack/ttrack.conf.example "$TTRACK_CONF"
+        chmod 644 "$TTRACK_CONF"
+    fi
+fi
+
 # Install ForceCommand sshd config to capture non-interactive SSH sessions.
 # Idempotent: only write if not already present (preserves manual edits).
 SSHD_CONF=/etc/ssh/sshd_config.d/zz-ttrack.conf

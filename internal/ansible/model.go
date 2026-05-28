@@ -22,9 +22,9 @@ import (
 	"sort"
 	"strings"
 	"time"
-)
 
-const maxOutput = 8 * 1024 // 8 KiB per-task output cap
+	"ttrack/internal/config"
+)
 
 // ----------------------------------------------------------------------------
 // Raw event types (JSON-lines on the wire / in storage)
@@ -214,8 +214,9 @@ func ParseRun(r io.Reader) (*Run, error) {
 	return run, nil
 }
 
-// truncate caps s to maxOutput bytes (UTF-8 safe: trims at a rune boundary).
+// truncate caps s to config.AnsibleOutputCap bytes (UTF-8 safe: trims at a rune boundary).
 func truncate(s string) string {
+	maxOutput := config.Load().AnsibleOutputCap
 	if len(s) <= maxOutput {
 		return s
 	}

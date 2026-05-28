@@ -373,6 +373,38 @@ Default store directory (overridden by
 .I <store>/<YYYYMMDDThhmmss>-<pid>.cast
 Auto-named recording. The timestamp is the session start time; the pid
 is the recorder's process id.
+.TP
+.I /etc/ttrack/ttrack.conf
+Runtime configuration file. All keys are optional; built-in defaults apply when absent.
+Override path with
+.B TTRACK_CONFIG
+env var. See
+.B CONFIGURATION
+section or
+.I /usr/share/ttrack/ttrack.conf.example
+for available keys.
+.SH CONFIGURATION
+.B /etc/ttrack/ttrack.conf
+is a simple key=value file (# comments, blank lines allowed).
+Available keys and defaults:
+.TP
+.B socket_path
+Unix socket path for ttrackd (default: /run/ttrackd.sock). Env: TTRACKD_SOCK.
+.TP
+.B central_dir
+Root of the central session store (default: /var/lib/ttrack). Env: TTRACK_CENTRAL_DIR.
+.TP
+.B key_file
+Encryption key path, relative to central_dir or absolute (default: .ttrack.key).
+.TP
+.B dial_timeout_sec
+Seconds to wait connecting to ttrackd (default: 1). Env: TTRACK_DIAL_TIMEOUT_SEC.
+.TP
+.B eof_grace_ms
+Milliseconds before force-closing PTY on stdin EOF (default: 500). Env: TTRACK_EOF_GRACE_MS.
+.TP
+.B ansible_output_cap
+Max bytes per ansible task output (default: 8192). Env: TTRACK_ANSIBLE_OUTPUT_CAP.
 .SH FILE FORMAT
 Recordings use the asciinema v2 cast format: a UTF-8, JSON-lines text
 file.

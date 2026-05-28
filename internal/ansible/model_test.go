@@ -3,6 +3,8 @@ package ansible
 import (
 	"strings"
 	"testing"
+
+	"ttrack/internal/config"
 )
 
 const sampleRun = `
@@ -143,9 +145,9 @@ func TestTruncate(t *testing.T) {
 	if truncate(short) != short {
 		t.Errorf("short string should not be truncated")
 	}
-	long := strings.Repeat("x", maxOutput+100)
+	long := strings.Repeat("x", config.Load().AnsibleOutputCap+100)
 	got := truncate(long)
-	if len(got) <= maxOutput {
+	if len(got) <= config.Load().AnsibleOutputCap {
 		// OK — truncated
 	}
 	if !strings.Contains(got, "truncated") {

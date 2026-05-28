@@ -18,14 +18,12 @@ import (
 	"golang.org/x/term"
 
 	"ttrack/internal/cast"
+	"ttrack/internal/config"
 	"ttrack/internal/store"
 )
 
 func daemonSocket() string {
-	if s := os.Getenv("TTRACKD_SOCK"); s != "" {
-		return s
-	}
-	return "/run/ttrackd.sock"
+	return config.Load().SocketPath
 }
 
 // openSink picks where the recording goes: stream to the root daemon when
@@ -33,7 +31,7 @@ func daemonSocket() string {
 // explicit -o always uses a local file at that path.
 func openSink(out string) (io.WriteCloser, string, error) {
 	if out == "" {
-		if conn, derr := net.DialTimeout("unix", daemonSocket(), 1*time.Second); derr == nil {
+		if conn, derr := net.DialTimeout("unix", daemonSocket(), config.Load().DialTimeout); derr == nil {
 			if _, werr := conn.Write([]byte("REC\n")); werr == nil {
 				return conn, "ttrackd (central)", nil
 			}
@@ -123,7 +121,7 @@ func Run(args []string) error {
 	go func() {
 		_, _ = io.Copy(ptmx, os.Stdin)
 		_, _ = ptmx.Write([]byte{4}) // Ctrl-D: graceful EOF signal
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(config.Load().EOFGrace)
 		closePTYFn()                                          // close master fd
 		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGHUP)   // explicit SIGHUP to process group
 	}()

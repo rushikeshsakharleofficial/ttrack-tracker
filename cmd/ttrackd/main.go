@@ -4,15 +4,14 @@ import (
 	"fmt"
 	"os"
 
+	"ttrack/internal/config"
 	"ttrack/internal/daemon"
 )
-
-const defaultSocket = "/run/ttrackd.sock"
 
 func main() {
 	sock := os.Getenv("TTRACKD_SOCK")
 	if sock == "" {
-		sock = defaultSocket
+		sock = config.Load().SocketPath
 	}
 	if err := daemon.Run(sock); err != nil {
 		fmt.Fprintln(os.Stderr, "ttrackd:", err)
