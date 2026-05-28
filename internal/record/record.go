@@ -117,13 +117,15 @@ func Run(args []string) error {
 	}()
 
 	// stdin → PTY. On EOF: try Ctrl-D (graceful), then force-close PTY
-	// master after grace period (closing master sends SIGHUP to child
-	// process group, bypasses IGNOREEOF, kills bash reliably).
+	// master. Some kernels/distros do not send SIGHUP to the child on PTY
+	// master close (depends on whether the slave is the child's controlling
+	// terminal), so we also send SIGHUP explicitly to the child process group.
 	go func() {
 		_, _ = io.Copy(ptmx, os.Stdin)
 		_, _ = ptmx.Write([]byte{4}) // Ctrl-D: graceful EOF signal
 		time.Sleep(500 * time.Millisecond)
-		closePTYFn() // force: closing master → SIGHUP → child exits
+		closePTYFn()                                          // close master fd
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGHUP)   // explicit SIGHUP to process group
 	}()
 
 	// PTY -> local stdout + recording.
