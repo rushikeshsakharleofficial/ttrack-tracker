@@ -270,7 +270,7 @@ func Duration(path string) string {
 	if isActive(path) && hdr.Timestamp > 0 {
 		elapsed := time.Since(time.Unix(hdr.Timestamp, 0)).Seconds()
 		if elapsed > last {
-			return humanDuration(elapsed) + "+"
+			return humanDuration(elapsed)
 		}
 	}
 	return humanDuration(last)
