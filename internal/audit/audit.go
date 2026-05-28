@@ -22,15 +22,13 @@ import (
 	"golang.org/x/term"
 
 	"ttrack/internal/cast"
+	"ttrack/internal/config"
 	"ttrack/internal/play"
 	"ttrack/internal/store"
 )
 
 func daemonSocket() string {
-	if s := os.Getenv("TTRACKD_SOCK"); s != "" {
-		return s
-	}
-	return "/run/ttrackd.sock"
+	return config.Load().SocketPath
 }
 
 func notRoot(err error) error {

@@ -20,6 +20,7 @@ import (
 
 	"golang.org/x/term"
 	"ttrack/internal/cast"
+	"ttrack/internal/config"
 	"ttrack/internal/crypto"
 )
 
@@ -37,15 +38,12 @@ func Dir() string {
 
 // CentralDir returns the central root-only recordings directory.
 func CentralDir() string {
-	if d := os.Getenv("TTRACK_CENTRAL_DIR"); d != "" {
-		return d
-	}
-	return "/var/lib/ttrack"
+	return config.Load().CentralDir
 }
 
 // KeyPath returns the at-rest encryption key path (root-only).
 func KeyPath() string {
-	return filepath.Join(CentralDir(), ".ttrack.key")
+	return config.Load().ResolvedKeyFile()
 }
 
 type castReadCloser struct {

@@ -11,14 +11,12 @@ import (
 	"strings"
 	"time"
 
+	"ttrack/internal/config"
 	"ttrack/internal/store"
 )
 
 func daemonSocket() string {
-	if s := os.Getenv("TTRACKD_SOCK"); s != "" {
-		return s
-	}
-	return "/run/ttrackd.sock"
+	return config.Load().SocketPath
 }
 
 // Ingest implements `ttrack ansible-ingest`.
