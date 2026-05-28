@@ -98,31 +98,28 @@ Every push to `main` publishes an `rpm`, a `deb`, and a static binary on the [re
 **Debian / Ubuntu (.deb):**
 
 ```bash
-curl -fLO https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases/download/v1.0.7/ttrack_1.0.7_amd64.deb
-sudo apt install ./ttrack_1.0.7_amd64.deb
+VER=$(curl -fsSL https://api.github.com/repos/rushikeshsakharleofficial/ttrack-tracker/releases/latest | grep -oP '"tag_name":\s*"v\K[^"]+')
+curl -fLO "https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases/download/v${VER}/ttrack_${VER}_amd64.deb"
+sudo apt install "./ttrack_${VER}_amd64.deb"
 ```
 
 **RHEL / Rocky / Fedora (.rpm):**
 
 ```bash
-curl -fLO https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases/download/v1.0.7/ttrack-1.0.7-1.x86_64.rpm
-sudo dnf install ./ttrack-1.0.7-1.x86_64.rpm
+VER=$(curl -fsSL https://api.github.com/repos/rushikeshsakharleofficial/ttrack-tracker/releases/latest | grep -oP '"tag_name":\s*"v\K[^"]+')
+curl -fLO "https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases/download/v${VER}/ttrack-${VER}-1.x86_64.rpm"
+sudo dnf install "./ttrack-${VER}-1.x86_64.rpm"
 ```
 
 **Static binary (any distro):**
 
 ```bash
-curl -fL -o ttrack https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases/download/v1.0.7/ttrack-1.0.7-linux-amd64
+VER=$(curl -fsSL https://api.github.com/repos/rushikeshsakharleofficial/ttrack-tracker/releases/latest | grep -oP '"tag_name":\s*"v\K[^"]+')
+curl -fL -o ttrack "https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases/download/v${VER}/ttrack-${VER}-linux-amd64"
 chmod +x ttrack && sudo install -m755 ttrack /usr/bin/ttrack
 ```
 
-To always fetch the newest release without pinning a version:
-
-```bash
-VER=$(curl -fsSL https://api.github.com/repos/rushikeshsakharleofficial/ttrack-tracker/releases/latest | grep -oP '"tag_name":\s*"v\K[^"]+')
-curl -fLO "https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases/download/v${VER}/ttrack_${VER}_amd64.deb"
-sudo apt install "./ttrack_${VER}_amd64.deb"
-```
+> **Note:** CI publishes a new release on every push to `main`. The commands above always fetch the latest.
 
 Packages install `ttrack` to `/usr/bin`, the `ttrackd` daemon to `/usr/libexec`, a systemd unit, the bash completion, and the auto-record login hook. The post-install step creates `/var/lib/ttrack` (root-only) and enables `ttrackd`.
 

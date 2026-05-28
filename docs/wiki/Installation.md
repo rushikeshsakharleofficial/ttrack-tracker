@@ -12,31 +12,28 @@ Every push to `main` publishes an `rpm`, a `deb`, and a static binary on the [re
 ### Debian / Ubuntu (.deb)
 
 ```bash
-curl -fLO https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases/download/v1.0.5/ttrack_1.0.5_amd64.deb
-sudo apt install ./ttrack_1.0.5_amd64.deb
+VER=$(curl -fsSL https://api.github.com/repos/rushikeshsakharleofficial/ttrack-tracker/releases/latest \
+  | grep -oP '"tag_name":\s*"v\K[^"]+')
+curl -fLO "https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases/download/v${VER}/ttrack_${VER}_amd64.deb"
+sudo apt install "./ttrack_${VER}_amd64.deb"
 ```
 
 ### RHEL / Rocky / Fedora (.rpm)
 
 ```bash
-curl -fLO https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases/download/v1.0.5/ttrack-1.0.5-1.x86_64.rpm
-sudo dnf install ./ttrack-1.0.5-1.x86_64.rpm
+VER=$(curl -fsSL https://api.github.com/repos/rushikeshsakharleofficial/ttrack-tracker/releases/latest \
+  | grep -oP '"tag_name":\s*"v\K[^"]+')
+curl -fLO "https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases/download/v${VER}/ttrack-${VER}-1.x86_64.rpm"
+sudo dnf install "./ttrack-${VER}-1.x86_64.rpm"
 ```
 
 ### Static binary (any distro)
 
 ```bash
-curl -fL -o ttrack https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases/download/v1.0.5/ttrack-1.0.5-linux-amd64
-chmod +x ttrack && sudo install -m755 ttrack /usr/bin/ttrack
-```
-
-### Always-latest install (auto-detect version)
-
-```bash
 VER=$(curl -fsSL https://api.github.com/repos/rushikeshsakharleofficial/ttrack-tracker/releases/latest \
   | grep -oP '"tag_name":\s*"v\K[^"]+')
-curl -fLO "https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases/download/v${VER}/ttrack_${VER}_amd64.deb"
-sudo apt install "./ttrack_${VER}_amd64.deb"
+curl -fL -o ttrack "https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases/download/v${VER}/ttrack-${VER}-linux-amd64"
+chmod +x ttrack && sudo install -m755 ttrack /usr/bin/ttrack
 ```
 
 ## What the package installs
