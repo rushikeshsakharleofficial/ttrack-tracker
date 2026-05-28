@@ -95,7 +95,9 @@ func Run(args []string) error {
 	if err != nil {
 		return err
 	}
-	defer func() { _ = ptmx.Close() }()
+	var closePTY sync.Once
+	closePTYFn := func() { closePTY.Do(func() { _ = ptmx.Close() }) }
+	defer closePTYFn()
 
 	winch := watchResize(ptmx)
 	restore := makeRawRestore(int(os.Stdin.Fd()))
@@ -114,13 +116,14 @@ func Run(args []string) error {
 	start := time.Now()
 	var wg sync.WaitGroup
 
-	// Local stdin -> PTY (user keystrokes). Not recorded.
-	// When stdin closes (e.g. pipe EOF from `ssh host cmd` with no TTY),
-	// write Ctrl-D (0x04) to the PTY so the shell sees EOF and exits cleanly
-	// instead of blocking forever waiting for more input.
+	// stdin → PTY. On EOF: try Ctrl-D (graceful), then force-close PTY
+	// master after grace period (closing master sends SIGHUP to child
+	// process group, bypasses IGNOREEOF, kills bash reliably).
 	go func() {
 		_, _ = io.Copy(ptmx, os.Stdin)
-		_, _ = ptmx.Write([]byte{4}) // Ctrl-D = EOF to shell
+		_, _ = ptmx.Write([]byte{4}) // Ctrl-D: graceful EOF signal
+		time.Sleep(500 * time.Millisecond)
+		closePTYFn() // force: closing master → SIGHUP → child exits
 	}()
 
 	// PTY -> local stdout + recording.
@@ -132,7 +135,7 @@ func Run(args []string) error {
 	close(winch)
 	signal.Stop(hup)
 	close(hup)
-	_ = ptmx.Close() // unblock the reader goroutine
+	closePTYFn() // unblock the reader goroutine
 	wg.Wait()
 	_ = cw.Close()
 	restore()
