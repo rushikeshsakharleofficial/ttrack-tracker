@@ -467,3 +467,17 @@ func AnsibleRuns(user string) ([]string, error) {
 	}
 	return ids, nil
 }
+
+// IsAnsibleRun reports whether id matches an ansible run in any user's ansible dir.
+func IsAnsibleRun(id string) bool {
+	users, err := Users()
+	if err != nil {
+		return false
+	}
+	for _, u := range users {
+		if _, serr := os.Stat(filepath.Join(AnsibleDir(u), id+".ajsonl")); serr == nil {
+			return true
+		}
+	}
+	return false
+}

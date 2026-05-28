@@ -73,18 +73,29 @@ func main() {
 	case "rec", "record":
 		err = record.Run(rest)
 	case "play":
-		// Password gate — prompt if playback password is set.
-		if perr := auth.PromptAndVerify(); perr != nil {
-			fmt.Fprintln(os.Stderr, "ttrack:", perr)
-			os.Exit(1)
-		}
-		// Auto-detect: existing local file → local play; otherwise → central store ID.
+		// Extract target first — needed for ansible pre-check before password prompt.
 		target := ""
 		for _, a := range rest {
 			if !strings.HasPrefix(a, "-") {
 				target = a
 			}
 		}
+		// Pre-check: if target is not a local file, see if it's an ansible run ID.
+		// Give a helpful redirect before the password prompt blocks a TTY.
+		if target != "" {
+			if _, serr := os.Stat(target); serr != nil {
+				if store.IsAnsibleRun(target) {
+					fmt.Fprintf(os.Stderr, "ttrack: %q is an Ansible run — use: ttrack ansible show %s\n", target, target)
+					os.Exit(1)
+				}
+			}
+		}
+		// Password gate — prompt if playback password is set.
+		if perr := auth.PromptAndVerify(); perr != nil {
+			fmt.Fprintln(os.Stderr, "ttrack:", perr)
+			os.Exit(1)
+		}
+		// Auto-detect: existing local file → local play; otherwise → central store ID.
 		if target != "" {
 			if _, serr := os.Stat(target); serr == nil {
 				err = play.Run(rest)
