@@ -17,3 +17,4 @@ GEMINI.md
 build/
 scripts/ansible/__pycache__/
 
+docs/superpowers/
