@@ -65,8 +65,11 @@ func wizard() error {
 
 	// [3/4] Encryption key
 	keyPath := cfg.ResolvedKeyFile()
-	if _, err := os.Stat(keyPath); err == nil {
+	if _, kerr := os.Stat(keyPath); kerr == nil {
 		printStep(3, 4, "Encryption key ("+keyPath+")", "OK")
+	} else if os.IsPermission(kerr) {
+		// Key exists but not readable by this user (root-only file). Not an error.
+		printStep(3, 4, "Encryption key ("+keyPath+")", "OK (root-only — run as root to verify)")
 	} else {
 		printStep(3, 4, "Encryption key ("+keyPath+")", "MISSING — start ttrackd to generate")
 		ok = false
