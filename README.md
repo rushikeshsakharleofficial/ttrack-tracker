@@ -98,21 +98,26 @@ Every push to `main` publishes an `rpm`, a `deb`, and a static binary on the [re
 **Debian / Ubuntu (.deb):**
 
 ```bash
-curl -fLO https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases/download/v0.4.14/ttrack_0.4.14_amd64.deb
-sudo apt install ./ttrack_0.4.14_amd64.deb
+curl -fLO https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases/download/v1.0.0/ttrack_1.0.0_amd64.deb
+sudo apt install ./ttrack_1.0.0_amd64.deb
+curl -fLO https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases/download/v1.0.0/ttrack_1.0.0_amd64.deb
+sudo apt install ./ttrack_1.0.0_amd64.deb
 ```
 
 **RHEL / Rocky / Fedora (.rpm):**
 
 ```bash
-curl -fLO https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases/download/v0.4.14/ttrack-0.4.14-1.x86_64.rpm
-sudo dnf install ./ttrack-0.4.14-1.x86_64.rpm
+curl -fLO https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases/download/v1.0.0/ttrack-1.0.0-1.x86_64.rpm
+sudo dnf install ./ttrack-1.0.0-1.x86_64.rpm
+curl -fLO https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases/download/v1.0.0/ttrack-1.0.0-1.x86_64.rpm
+sudo dnf install ./ttrack-1.0.0-1.x86_64.rpm
 ```
 
 **Static binary (any distro):**
 
 ```bash
-curl -fL -o ttrack https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases/download/v0.4.14/ttrack-0.4.14-linux-amd64
+curl -fL -o ttrack https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases/download/v1.0.0/ttrack-1.0.0-linux-amd64
+curl -fL -o ttrack https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases/download/v1.0.0/ttrack-1.0.0-linux-amd64
 chmod +x ttrack && sudo install -m755 ttrack /usr/bin/ttrack
 ```
 
