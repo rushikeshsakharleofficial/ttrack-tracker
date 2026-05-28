@@ -15,6 +15,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -793,14 +794,25 @@ func appendMatches(snips []string, data, needle string, ignore bool, max int) []
 	return snips
 }
 
-// parseTime accepts YYYY-MM-DD[ HH:MM[:SS]] or RFC3339, in local time.
+// parseTime accepts any format the system `date -d` command accepts, e.g.
+// "yesterday", "2 days ago", "last week", "2026-05-28 17:00", "May 28".
+// Built-in Go layouts are tried first for speed; then shells out to date(1).
 func parseTime(s string) (time.Time, error) {
 	for _, l := range []string{"2006-01-02 15:04:05", "2006-01-02 15:04", "2006-01-02", time.RFC3339} {
 		if t, err := time.ParseInLocation(l, s, time.Local); err == nil {
 			return t, nil
 		}
 	}
-	return time.Time{}, fmt.Errorf("unrecognized time %q (use YYYY-MM-DD[ HH:MM[:SS]] or RFC3339)", s)
+	// Fall back to `date -d "<s>" +%s` — supports natural language on Linux.
+	out, cerr := exec.Command("date", "-d", s, "+%s").Output()
+	if cerr != nil {
+		return time.Time{}, fmt.Errorf("unrecognized time %q (accepts any format 'date -d' supports: YYYY-MM-DD, 'yesterday', '2 days ago', etc.)", s)
+	}
+	sec, cerr := strconv.ParseInt(strings.TrimSpace(string(out)), 10, 64)
+	if cerr != nil {
+		return time.Time{}, fmt.Errorf("unrecognized time %q", s)
+	}
+	return time.Unix(sec, 0), nil
 }
 
 // clean strips CR and ANSI/control sequences for readable snippet display.
