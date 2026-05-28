@@ -241,15 +241,15 @@ jobs:
           scp -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no \
               "$DEB" rushikesh.sakharle@89.167.44.42:/tmp/ttrack-latest.deb
 
-          ssh -T -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -o BatchMode=yes \
-              rushikesh.sakharle@89.167.44.42 '
-DEB=/tmp/ttrack-latest.deb
-NEW_VER=$(dpkg-deb -f "$DEB" Version)
-CUR_VER=$(dpkg -s ttrack 2>/dev/null | sed -n "s/^Version: //p")
-if [ "$CUR_VER" = "$NEW_VER" ]; then
-    echo "ttrack $CUR_VER already installed -- skipping"
-else
-    echo "upgrading ttrack $CUR_VER -> $NEW_VER"
-    sudo -n dpkg -i "$DEB" && echo deployed
-fi
-'
+          printf '%s\n' \
+            'DEB=/tmp/ttrack-latest.deb' \
+            'NEW_VER=$(dpkg-deb -f "$DEB" Version)' \
+            'CUR_VER=$(dpkg -s ttrack 2>/dev/null | sed -n "s/^Version: //p")' \
+            'if [ "$CUR_VER" = "$NEW_VER" ]; then' \
+            '    echo "ttrack $CUR_VER already installed -- skipping"' \
+            'else' \
+            '    echo "upgrading ttrack $CUR_VER -> $NEW_VER"' \
+            '    sudo -n dpkg -i "$DEB" && echo deployed' \
+            'fi' \
+          | ssh -T -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -o BatchMode=yes \
+              rushikesh.sakharle@89.167.44.42 bash -s
