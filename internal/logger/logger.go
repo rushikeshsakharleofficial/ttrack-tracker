@@ -1,12 +1,13 @@
 // Package logger provides leveled logging for ttrack and ttrackd.
 //
 // Levels:
-//   0 = OFF   — no output
-//   1 = ERROR — fatal errors, write failures
-//   2 = WARN  — retries, recoverable errors, fallback paths
-//   3 = INFO  — startup, session open/close  (default)
-//   4 = DEBUG — frame details, config loading, connection flow
-//   5 = TRACE — every read/write byte count, buffer operations
+//
+//	0 = OFF   — no output
+//	1 = ERROR — fatal errors, write failures
+//	2 = WARN  — retries, recoverable errors, fallback paths
+//	3 = INFO  — startup, session open/close  (default)
+//	4 = DEBUG — frame details, config loading, connection flow
+//	5 = TRACE — every read/write byte count, buffer operations
 //
 // Under systemd (JOURNAL_STREAM set) timestamps are stripped — journald adds them.
 // Standalone: standard log timestamps are used.
