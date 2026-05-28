@@ -26,6 +26,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	"ttrack/internal/crypto"
+	"ttrack/internal/logger"
 	"ttrack/internal/store"
 )
 
@@ -170,8 +171,7 @@ func Run(socketPath string) error {
 	}
 
 	reg := &registry{live: map[string]sessionRef{}, key: key}
-	fmt.Fprintf(os.Stderr, "ttrackd: listening on %s, storing in %s (encrypted)\n",
-		socketPath, store.CentralDir())
+	logger.Infof("ttrackd: listening on %s, storing in %s (encrypted)", socketPath, store.CentralDir())
 
 	for {
 		conn, err := ln.Accept()
@@ -179,12 +179,12 @@ func Run(socketPath string) error {
 			// Transient errors (e.g. EINTR): log and retry.
 			// Permanent errors (listener closed, fd exhausted): stop.
 			if ne, ok := err.(net.Error); ok && ne.Timeout() {
-				fmt.Fprintf(os.Stderr, "ttrackd: accept timeout: %v\n", err)
+				logger.Debugf("ttrackd: accept timeout: %v", err)
 				continue
 			}
 			// Check if it's a temporary error
 			if isTemporary(err) {
-				fmt.Fprintf(os.Stderr, "ttrackd: accept (retrying): %v\n", err)
+				logger.Warnf("ttrackd: accept (retrying): %v", err)
 				continue
 			}
 			return fmt.Errorf("ttrackd: accept fatal: %w", err)
@@ -192,7 +192,7 @@ func Run(socketPath string) error {
 		uc, ok := conn.(*net.UnixConn)
 		if !ok {
 			// Should never happen with a unix listener, but guard the cast.
-			fmt.Fprintf(os.Stderr, "ttrackd: unexpected conn type %T\n", conn)
+			logger.Errorf("ttrackd: unexpected conn type %T", conn)
 			_ = conn.Close()
 			continue
 		}
@@ -239,7 +239,7 @@ func handleRec(conn *net.UnixConn, br *bufio.Reader, cred *unix.Ucred, reg *regi
 	path := filepath.Join(dir, id+".cast")
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "ttrackd: open session file %s: %v\n", path, err)
+		logger.Errorf("ttrackd: open session file %s: %v", path, err)
 		_, _ = conn.Write([]byte("ERR session file unavailable\n"))
 		return
 	}
@@ -253,7 +253,7 @@ func handleRec(conn *net.UnixConn, br *bufio.Reader, cred *unix.Ucred, reg *regi
 	reg.add(id, sess, path)
 	defer func() {
 		if err := sess.close(); err != nil {
-			fmt.Fprintf(os.Stderr, "ttrackd: close %s: %v\n", path, err)
+			logger.Warnf("ttrackd: close %s: %v", path, err)
 		}
 		reg.remove(id)
 	}()
@@ -263,7 +263,7 @@ func handleRec(conn *net.UnixConn, br *bufio.Reader, cred *unix.Ucred, reg *regi
 		n, rerr := br.Read(buf)
 		if n > 0 {
 			if err := sess.write(buf[:n]); err != nil {
-				fmt.Fprintf(os.Stderr, "ttrackd: write %s: %v\n", path, err)
+				logger.Errorf("ttrackd: write %s: %v", path, err)
 				return
 			}
 		}
@@ -309,7 +309,7 @@ func handleAnsible(conn *net.UnixConn, br *bufio.Reader, runID string, cred *uni
 	path := filepath.Join(dir, runID+".ajsonl")
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "ttrackd: open ansible file %s: %v\n", path, err)
+		logger.Errorf("ttrackd: open ansible file %s: %v", path, err)
 		_, _ = conn.Write([]byte("ERR ansible file unavailable\n"))
 		return
 	}
@@ -401,9 +401,8 @@ func ensureKey() ([]byte, error) {
 	}
 	_ = os.Chmod(kp, 0o600)
 	setImmutable(kp) // protect from rm/vi/sed/>/tee even by root (until chattr -i)
-	fmt.Fprintf(os.Stderr,
-		"ttrackd: created NEW encryption key at %s — BACK IT UP NOW. "+
-			"Losing it makes every recording permanently unreadable.\n", kp)
+	logger.Infof("ttrackd: created NEW encryption key at %s — BACK IT UP NOW. "+
+		"Losing it makes every recording permanently unreadable.", kp)
 	return key, nil
 }
 

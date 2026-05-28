@@ -35,6 +35,9 @@ type Config struct {
 	// ScrollBuffer is the PTY read buffer size in bytes used during recording.
 	// Larger values reduce syscall overhead on high-throughput sessions.
 	ScrollBuffer int
+	// LogLevel controls logging verbosity (0=off, 1=error, 2=warn, 3=info, 4=debug, 5=trace).
+	// Default 3 (INFO). Set to 0 to silence all log output.
+	LogLevel int
 }
 
 // defaults returns a Config populated with factory defaults.
@@ -47,6 +50,7 @@ func defaults() Config {
 		EOFGrace:         500 * time.Millisecond,
 		AnsibleOutputCap: 8 * 1024,
 		ScrollBuffer:     32 * 1024,
+		LogLevel:         3,
 	}
 }
 
@@ -151,6 +155,10 @@ func applyKey(cfg *Config, k, v string) {
 		if n, err := strconv.Atoi(v); err == nil && n >= 4096 {
 			cfg.ScrollBuffer = n
 		}
+	case "log_level":
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 && n <= 5 {
+			cfg.LogLevel = n
+		}
 	}
 }
 
@@ -184,6 +192,11 @@ func applyEnv(cfg *Config) {
 	if v := os.Getenv("TTRACK_SCROLL_BUFFER"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n >= 4096 {
 			cfg.ScrollBuffer = n
+		}
+	}
+	if v := os.Getenv("TTRACK_LOG_LEVEL"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 && n <= 5 {
+			cfg.LogLevel = n
 		}
 	}
 }

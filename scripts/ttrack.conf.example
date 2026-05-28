@@ -26,3 +26,13 @@ ansible_output_cap = 8192
 # PTY read buffer size in bytes (minimum 4096). Larger = fewer syscalls on
 # high-throughput sessions; smaller = lower per-session memory usage.
 scroll_buffer = 32768
+
+# Logging verbosity for ttrackd (0–5).
+#   0 = off (no log output)
+#   1 = error   — write failures, fatal conditions
+#   2 = warn    — retries, recoverable errors, fallback paths
+#   3 = info    — startup, session open/close  (default)
+#   4 = debug   — connection flow, config loading details
+#   5 = trace   — every read/write operation
+# Override: TTRACK_LOG_LEVEL=<n>
+log_level = 3

@@ -37,6 +37,9 @@ func TestDefaults(t *testing.T) {
 	if cfg.ScrollBuffer != 32*1024 {
 		t.Errorf("ScrollBuffer = %d, want 32768", cfg.ScrollBuffer)
 	}
+	if cfg.LogLevel != 3 {
+		t.Errorf("LogLevel = %d, want 3", cfg.LogLevel)
+	}
 }
 
 func TestResolvedKeyFile(t *testing.T) {
