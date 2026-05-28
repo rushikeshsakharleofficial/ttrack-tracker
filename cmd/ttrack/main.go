@@ -7,6 +7,7 @@ import (
 	"ttrack/internal/ansible"
 	"ttrack/internal/audit"
 	"ttrack/internal/complete"
+	"ttrack/internal/config"
 	"ttrack/internal/play"
 	"ttrack/internal/record"
 	"ttrack/internal/store"
@@ -27,6 +28,10 @@ func main() {
 	if cmd == "version" || cmd == "-V" || cmd == "--version" {
 		fmt.Println("ttrack", Version)
 		return
+	}
+
+	if cmd == "-c" || cmd == "--check" {
+		os.Exit(runConfigCheck())
 	}
 
 	// `ttrack help [command]` — overall usage, or one command's help.
@@ -127,6 +132,7 @@ audit commands (read the central root-only store; run as root):
 
   ttrack completion bash               print the bash completion script
   ttrack version                       print version
+  ttrack --check                       validate /etc/ttrack/ttrack.conf and show resolved values
 
 search opts: --from / --to <YYYY-MM-DD[ HH:MM]>, --user <name>, -i
 recordings in the central store are encrypted at rest (opaque to cat/strings)
@@ -285,4 +291,53 @@ Install:
 `, true
 	}
 	return "", false
+}
+
+// runConfigCheck validates the config file and prints all resolved values.
+// Returns 0 on success, 1 on error (mirrors nginx -t behaviour).
+func runConfigCheck() int {
+	path := os.Getenv("TTRACK_CONFIG")
+	if path == "" {
+		path = config.DefaultPath
+	}
+
+	fmt.Fprintf(os.Stderr, "ttrack: reading config from %s\n", path)
+
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		fmt.Fprintf(os.Stderr, "ttrack: config file not found — using built-in defaults\n")
+	}
+
+	cfg := config.Load()
+
+	// Resolved key file for display (may differ from raw KeyFile).
+	resolvedKey := cfg.ResolvedKeyFile()
+
+	fmt.Printf("%-22s = %s\n", "socket_path", cfg.SocketPath)
+	fmt.Printf("%-22s = %s\n", "central_dir", cfg.CentralDir)
+	if cfg.KeyFile == "" {
+		fmt.Printf("%-22s = %s  (default: relative to central_dir)\n", "key_file", resolvedKey)
+	} else {
+		fmt.Printf("%-22s = %s  (resolved: %s)\n", "key_file", cfg.KeyFile, resolvedKey)
+	}
+	fmt.Printf("%-22s = %.3gs\n", "dial_timeout_sec", cfg.DialTimeout.Seconds())
+	fmt.Printf("%-22s = %dms\n", "eof_grace_ms", cfg.EOFGrace.Milliseconds())
+	fmt.Printf("%-22s = %d\n", "ansible_output_cap", cfg.AnsibleOutputCap)
+
+	// Warn about active env overrides so user knows values may differ from file.
+	overrides := [][2]string{
+		{"TTRACKD_SOCK", os.Getenv("TTRACKD_SOCK")},
+		{"TTRACK_CENTRAL_DIR", os.Getenv("TTRACK_CENTRAL_DIR")},
+		{"TTRACK_KEY_FILE", os.Getenv("TTRACK_KEY_FILE")},
+		{"TTRACK_DIAL_TIMEOUT_SEC", os.Getenv("TTRACK_DIAL_TIMEOUT_SEC")},
+		{"TTRACK_EOF_GRACE_MS", os.Getenv("TTRACK_EOF_GRACE_MS")},
+		{"TTRACK_ANSIBLE_OUTPUT_CAP", os.Getenv("TTRACK_ANSIBLE_OUTPUT_CAP")},
+	}
+	for _, ov := range overrides {
+		if ov[1] != "" {
+			fmt.Fprintf(os.Stderr, "ttrack: warning: %s=%s overrides config file\n", ov[0], ov[1])
+		}
+	}
+
+	fmt.Fprintln(os.Stderr, "ttrack: config OK")
+	return 0
 }
