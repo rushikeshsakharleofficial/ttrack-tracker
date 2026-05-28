@@ -199,6 +199,13 @@ func FindCentral(id string) (path, user string, err error) {
 			}
 		}
 	}
+	// Check if the id matches an ansible run — give a useful hint.
+	for _, u := range users {
+		ansiblePath := filepath.Join(AnsibleDir(u), id+".ajsonl")
+		if _, serr := os.Stat(ansiblePath); serr == nil {
+			return "", "", fmt.Errorf("session %q is an Ansible run — use: ttrack ansible show %s", id, id)
+		}
+	}
 	return "", "", fmt.Errorf("session %q not found in %s", id, CentralDir())
 }
 
