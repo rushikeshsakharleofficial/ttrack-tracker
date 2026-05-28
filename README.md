@@ -5,7 +5,7 @@
 
 Record and replay Linux terminal sessions as asciinema-compatible casts, with an optional root daemon that collects every user's session into a root-only central store for audit.
 
-[![CI](https://github.com/rushikeshsakharleofficial/ttrack-tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/rushikeshsakharleofficial/ttrack-tracker/actions/workflows/ci.yml)
+[![CI](https://github.com/rushikeshsakharleofficial/ttrack-tracker/actions/workflows/pipeline.yml/badge.svg)](https://github.com/rushikeshsakharleofficial/ttrack-tracker/actions/workflows/pipeline.yml)
 [![Release](https://img.shields.io/github/v/release/rushikeshsakharleofficial/ttrack-tracker)](https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases)
 [![License: GPL-2.0](https://img.shields.io/badge/license-GPL--2.0-blue.svg)](LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
@@ -100,8 +100,6 @@ Every push to `main` publishes an `rpm`, a `deb`, and a static binary on the [re
 ```bash
 curl -fLO https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases/download/v1.0.2/ttrack_1.0.2_amd64.deb
 sudo apt install ./ttrack_1.0.2_amd64.deb
-curl -fLO https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases/download/v1.0.2/ttrack_1.0.2_amd64.deb
-sudo apt install ./ttrack_1.0.2_amd64.deb
 ```
 
 **RHEL / Rocky / Fedora (.rpm):**
@@ -109,14 +107,11 @@ sudo apt install ./ttrack_1.0.2_amd64.deb
 ```bash
 curl -fLO https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases/download/v1.0.2/ttrack-1.0.2-1.x86_64.rpm
 sudo dnf install ./ttrack-1.0.2-1.x86_64.rpm
-curl -fLO https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases/download/v1.0.2/ttrack-1.0.2-1.x86_64.rpm
-sudo dnf install ./ttrack-1.0.2-1.x86_64.rpm
 ```
 
 **Static binary (any distro):**
 
 ```bash
-curl -fL -o ttrack https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases/download/v1.0.2/ttrack-1.0.2-linux-amd64
 curl -fL -o ttrack https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases/download/v1.0.2/ttrack-1.0.2-linux-amd64
 chmod +x ttrack && sudo install -m755 ttrack /usr/bin/ttrack
 ```
@@ -181,22 +176,29 @@ With no command, `ttrack rec` records your `$SHELL` interactively until you `exi
 
 `play` flags: `--speed N` playback multiplier (default `1.0`); `--idle N` caps idle gaps to N seconds — default `0` = **exact original timing** (idle/waits reproduced in full, like a video); set `N`>0 to compress pauses for quick review.
 
-**Player UI.** On a terminal, `play` and `play-user` open a full-screen player (alternate screen) with the recording rendered above a persistent thin-line transport bar showing position, `MM:SS / MM:SS`, and speed. At the end it holds on the final frame until you quit. Controls:
+**Player UI.** On a terminal, `play` and `play-user` open a full-screen player (alternate screen). The recording renders above a plain-text status bar:
+
+```
+ > 01:23 / 05:00 [####      ]  27%  1x   <-/-> seek  pgup scroll  g goto  spc play  q quit
+```
+
+`>` = playing, `||` = paused. The `[####   ]` bar fills proportionally. At the end it holds on the final frame until you quit.
+
+Controls:
 
 | Key / action | Effect |
 |:----|:-------|
 | `space` | Pause / resume |
-| `→` / `l` | Seek forward 5s |
-| `←` / `h` | Seek backward 5s (re-renders up to that point) |
-| `↑` / `+` | Double speed (up to 64×) |
-| `↓` / `-` | Halve speed (down to 1/64×) |
-| `g` | Jump to a recorded command — opens a list of commands found in the session (detected from shell prompts) with timestamps; ↑/↓ select, Enter jumps, `t` types a time, `q` back. Falls back to time entry if none detected. |
-| click the bar | Seek to that point (Shift+click to select text instead) |
-| `b` | Hide/show the bar — full-height playback (useful for recordings that draw their own progress bar, e.g. apt/dpkg) |
+| `→` / `←` | Seek forward / backward 5 s (re-renders from that point) |
+| `↑` / `↓` | Double / halve playback speed (range: 1/64× – 64×) |
+| `g` | Go to time — type `MM:SS` or seconds, Enter to jump, Esc to cancel. Shows as `goto: 1:23_` in the bar while typing. |
+| `pgup` | Enter scroll view — browse past output a page at a time; any other key exits. |
+| click the bar | Seek to that point (Shift+click selects text instead) |
+| `b` | Hide/show the status bar — full-height playback (useful when a recording draws its own progress bar, e.g. apt/dpkg) |
 | `0` | Restart from the beginning |
 | `q` / `Ctrl-C` | Quit |
 
-The player is best for line-oriented recordings (shells, package installs); a recording that was itself a full-screen TUI (vim, htop) sets its own scroll region and may briefly fight the transport bar. When output is piped or redirected, `play` runs straight through instead (and `--idle` applies). `--idle` is ignored in the player — use seek.
+The player is best for line-oriented recordings (shells, package installs). Recordings of full-screen TUIs (vim, htop) render exactly in the main view; the scroll view is approximate for those. When output is piped or redirected, `play` runs straight through without the player UI (`--idle` then applies).
 
 ### Audit commands (root)
 
@@ -469,6 +471,37 @@ are not printed as garbage or left on the shell prompt. Multibyte/box-drawing
 characters survive even when a PTY read splits a rune across chunks. If an *old*
 recording (made before these fixes) still shows `�` or stray text, re-record it.
 
+**Scroll view shows garbled or concatenated lines.** The scrollback viewer (`pgup`
+during replay) parses terminal output heuristically. Cursor-movement sequences
+(`\x1b[H`, `\x1b[A`, `\x1b[F`, `\x1bM`) are treated as line breaks so that
+tool output that repaints lines in-place (dpkg progress, apt, bash prompts) appears
+correctly. Full-screen TUIs (vim, htop) draw to arbitrary cells — they may look
+approximate in scroll view, but the main player (non-scroll mode) renders them
+exactly.
+
+**Colors bleed into empty cells in scroll view.** The scroll renderer resets SGR
+attributes before and after each line (`\x1b[0m`) and erases trailing cells with the
+default background (`\x1b[K`). If you see color bleed, you are on an older build —
+upgrade to v1.0.2+.
+
+**`ttrack` hangs or does not record.** Check the daemon:
+
+```bash
+sudo systemctl status ttrackd
+sudo journalctl -u ttrackd --since '5 min ago' --no-pager
+```
+
+If the daemon is stopped, `ttrack rec` still works (fail-open: saves to
+`~/.local/share/ttrack`). Start `ttrackd` and those files are ingested on next start.
+
+**`man ttrack` shows an old version.** A manual install may have left a stale man page
+at `/usr/local/man/man1/ttrack.1` which shadows the package-installed one. Remove it:
+
+```bash
+sudo rm -f /usr/local/man/man1/ttrack.1
+man ttrack
+```
+
 ## Building and packaging
 
 ```bash
@@ -568,6 +601,30 @@ If `ttrackd` is unreachable, the run is saved to `~/.local/share/ttrack/ansible/
 ### Limitation
 
 Only controllers with `ttrack` installed produce Ansible records. Managed hosts still receive raw Ansible SSH execs (useful if the sshd `ForceCommand` wrapper is configured, but those carry no task name or status).
+
+## What's new in v1.0
+
+**v1.0 is a stability and UX milestone.** Changes since v0.x:
+
+### Player UI (plain-text, no color dependencies)
+- Status bar redesigned: plain ASCII `[####   ]` progress bar, `>` / `||` play/pause icons — no ANSI colors, legible on any terminal and with any color scheme.
+- Scroll indicator redesigned: `[SCROLL] -N/M   pgdn/down/wheel: scroll down   any other key: exit` — plain text, no color.
+- Scroll view: fixed SGR color bleed into trailing cells (`\x1b[0m\x1b[K` after each line).
+- Scroll view: cursor-movement escape sequences (`\x1b[H`, `\x1b[A`, `\x1b[F`, `\x1bM`) now act as implicit line breaks so tool output that repaints its line (dpkg, apt, bash prompts) renders as separate lines instead of concatenating.
+- Wide-char / CJK / emoji display: `truncLine` and `visWidth` use an East Asian Width column table instead of rune count, so multi-column characters are truncated at the correct column boundary.
+
+### Daemon stability
+- Accept loop now distinguishes transient errors (EINTR, EAGAIN, EMFILE — log and retry) from fatal errors (closed listener — return and restart).
+- `registry.get()` upgraded from `sync.Mutex` to `sync.RWMutex`: concurrent `tail` readers no longer block each other.
+- Session file open failures now report `ERR session file unavailable` to the connecting client and log to stderr instead of silently dropping the connection.
+- Ansible file open failures report `ERR ansible file unavailable` similarly.
+- Unix socket type-assertion uses comma-ok pattern with a fallback log+close instead of panicking.
+
+### CI / deploy
+- Auto-deploy to jump server uses `dpkg -i` (handles fresh install and upgrade); skips if the same version is already installed.
+- Pipeline uses `bash /tmp/deploy-script.sh` pattern (not stdin pipe) so it works correctly through the `ForceCommand` SSH wrapper.
+- Node.js deprecation warnings silenced (`FORCE_JAVASCRIPT_ACTIONS_TO_NODE24`).
+- SonarQube scan action updated to v6.
 
 ## Contributing
 
