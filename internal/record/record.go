@@ -122,8 +122,8 @@ func Run(args []string) error {
 		_, _ = io.Copy(ptmx, os.Stdin)
 		_, _ = ptmx.Write([]byte{4}) // Ctrl-D: graceful EOF signal
 		time.Sleep(config.Load().EOFGrace)
-		closePTYFn()                                          // close master fd
-		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGHUP)   // explicit SIGHUP to process group
+		closePTYFn()                                       // close master fd
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGHUP) // explicit SIGHUP to process group
 	}()
 
 	// PTY -> local stdout + recording.
