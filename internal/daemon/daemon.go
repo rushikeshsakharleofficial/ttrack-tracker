@@ -11,6 +11,7 @@ package daemon
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -113,9 +114,10 @@ func (s *session) close() error {
 }
 
 type registry struct {
-	mu   sync.RWMutex // RWMutex: concurrent reads (tail) don't block each other
-	live map[string]sessionRef
-	key  []byte // at-rest encryption key
+	mu        sync.RWMutex // RWMutex: concurrent reads (tail) don't block each other
+	live      map[string]sessionRef
+	key       []byte         // at-rest encryption key
+	connCount map[uint32]int // per-UID connection cap
 }
 
 type sessionRef struct {
@@ -143,8 +145,8 @@ func (r *registry) get(id string) (sessionRef, bool) {
 }
 
 // Run starts the daemon: ingests stray user-local recordings, then serves the
-// unix socket until the process is terminated.
-func Run(socketPath string) error {
+// unix socket until ctx is cancelled or the process is terminated.
+func Run(ctx context.Context, socketPath string) error {
 	if err := os.MkdirAll(store.CentralDir(), 0o700); err != nil {
 		return fmt.Errorf("create central dir: %w", err)
 	}
@@ -157,7 +159,6 @@ func Run(socketPath string) error {
 	if err != nil {
 		return err
 	}
-	ingestLocalRecordings(key)
 
 	_ = os.Remove(socketPath)
 	ln, err := net.Listen("unix", socketPath)
@@ -170,12 +171,26 @@ func Run(socketPath string) error {
 		return fmt.Errorf("chmod socket: %w", err)
 	}
 
-	reg := &registry{live: map[string]sessionRef{}, key: key}
+	// Start ingest after the socket is ready so connections aren't dropped
+	// while a large spool is being processed.
+	go ingestLocalRecordings(key)
+
+	// Close the listener when the context is cancelled so Accept() unblocks.
+	go func() {
+		<-ctx.Done()
+		ln.Close()
+	}()
+
+	reg := &registry{live: map[string]sessionRef{}, key: key, connCount: map[uint32]int{}}
 	logger.Infof("ttrackd: listening on %s, storing in %s (encrypted)", socketPath, store.CentralDir())
 
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
+			if ctx.Err() != nil {
+				logger.Infof("ttrackd: shutting down")
+				return nil
+			}
 			// Transient errors (e.g. EINTR): log and retry.
 			// Permanent errors (listener closed, fd exhausted): stop.
 			if ne, ok := err.(net.Error); ok && ne.Timeout() {
@@ -202,6 +217,11 @@ func Run(socketPath string) error {
 
 func handle(conn *net.UnixConn, reg *registry) {
 	defer conn.Close()
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Errorf("ttrackd: panic in handle: %v", r)
+		}
+	}()
 
 	cred, err := peerCred(conn)
 	if err != nil || cred == nil {
@@ -228,6 +248,20 @@ func handle(conn *net.UnixConn, reg *registry) {
 }
 
 func handleRec(conn *net.UnixConn, br *bufio.Reader, cred *unix.Ucred, reg *registry) {
+	reg.mu.Lock()
+	if reg.connCount[cred.Uid] >= 10 {
+		reg.mu.Unlock()
+		_, _ = conn.Write([]byte("ERR too many sessions\n"))
+		return
+	}
+	reg.connCount[cred.Uid]++
+	reg.mu.Unlock()
+	defer func() {
+		reg.mu.Lock()
+		reg.connCount[cred.Uid]--
+		reg.mu.Unlock()
+	}()
+
 	uname := lookupUser(cred.Uid)
 	dir := filepath.Join(store.CentralDir(), uname)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -263,7 +297,7 @@ func handleRec(conn *net.UnixConn, br *bufio.Reader, cred *unix.Ucred, reg *regi
 		n, rerr := br.Read(buf)
 		if n > 0 {
 			if err := sess.write(buf[:n]); err != nil {
-				logger.Errorf("ttrackd: write %s: %v", path, err)
+				logger.Warnf("ttrackd: write %s (uid=%d): %v — session truncated", path, cred.Uid, err)
 				return
 			}
 		}
@@ -319,6 +353,7 @@ func handleAnsible(conn *net.UnixConn, br *bufio.Reader, runID string, cred *uni
 		return
 	}
 	defer f.Close()
+	defer f.Sync()
 
 	buf := make([]byte, 32*1024)
 	for {
@@ -365,10 +400,22 @@ func peerCred(c *net.UnixConn) (*unix.Ucred, error) {
 }
 
 func lookupUser(uid uint32) string {
-	if u, err := user.LookupId(strconv.FormatUint(uint64(uid), 10)); err == nil && u.Username != "" {
-		return u.Username
+	u, err := user.LookupId(strconv.FormatUint(uint64(uid), 10))
+	if err != nil || u.Username == "" {
+		return strconv.FormatUint(uint64(uid), 10)
 	}
-	return strconv.FormatUint(uint64(uid), 10)
+	// Validate username is safe to use as a path component.
+	uname := u.Username
+	for _, c := range uname {
+		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+			(c >= '0' && c <= '9') || c == '_' || c == '-' || c == '.') {
+			return strconv.FormatUint(uint64(uid), 10)
+		}
+	}
+	if uname == "." || uname == ".." || strings.HasPrefix(uname, ".") || strings.Contains(uname, "/") {
+		return strconv.FormatUint(uint64(uid), 10)
+	}
+	return uname
 }
 
 // ensureKey loads the at-rest key, creating it on first run. It refuses to
@@ -442,9 +489,12 @@ func encryptedRecordingsExist() bool {
 				continue
 			}
 			magic := make([]byte, len(crypto.Magic))
-			rn, _ := io.ReadFull(f, magic)
+			if _, err := io.ReadFull(f, magic); err != nil {
+				f.Close()
+				continue // unreadable file — skip
+			}
 			f.Close()
-			if rn == len(crypto.Magic) && string(magic) == crypto.Magic {
+			if string(magic) == crypto.Magic {
 				return true
 			}
 		}

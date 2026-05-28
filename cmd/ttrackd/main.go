@@ -1,8 +1,11 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"ttrack/internal/config"
 	"ttrack/internal/daemon"
@@ -19,7 +22,22 @@ func main() {
 	}
 	defer closeLog()
 
-	if err := daemon.Run(cfg.SocketPath); err != nil {
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
+	defer stop()
+
+	sighup := make(chan os.Signal, 1)
+	signal.Notify(sighup, syscall.SIGHUP)
+	go func() {
+		for range sighup {
+			if err := logger.Reopen(cfg.LogFile); err != nil {
+				logger.Warnf("ttrackd: reopen log: %v", err)
+			} else {
+				logger.Infof("ttrackd: log file reopened (SIGHUP)")
+			}
+		}
+	}()
+
+	if err := daemon.Run(ctx, cfg.SocketPath); err != nil {
 		fmt.Fprintln(os.Stderr, "ttrackd:", err)
 		os.Exit(1)
 	}
