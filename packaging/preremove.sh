@@ -18,6 +18,9 @@ SSHD_CONF=/etc/ssh/sshd_config.d/zz-ttrack.conf
 cat > "$WRAP" << 'PASSTHROUGH_EOF'
 #!/bin/sh
 # ttrack-ssh-wrap safety passthrough — ttrack is being removed.
+# SSH_ORIGINAL_COMMAND is user-supplied. Passing it to bash -c is intentional
+# (required for scp/sftp/git semantics) and equivalent to what ttrack-ssh-wrap does.
+# This passthrough is only active during the brief removal window.
 if [ -n "$SSH_ORIGINAL_COMMAND" ]; then
     exec /bin/bash -c "$SSH_ORIGINAL_COMMAND"
 else

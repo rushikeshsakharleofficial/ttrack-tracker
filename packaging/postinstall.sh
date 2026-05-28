@@ -54,12 +54,18 @@ if [ -d /etc/ssh/sshd_config.d ]; then
 ForceCommand /usr/libexec/ttrack-ssh-wrap
 SSHD_EOF
     fi
-fi
-# Validate and reload sshd if config is valid.
-if command -v sshd >/dev/null 2>&1 && sshd -t 2>/dev/null; then
-    if command -v systemctl >/dev/null 2>&1; then
-        systemctl reload ssh 2>/dev/null || systemctl reload sshd 2>/dev/null || true
+    # Validate sshd config — revert if broken
+    if ! sshd -t 2>/dev/null; then
+        # Revert Include injection if we added it
+        sed -i '/^Include \/etc\/ssh\/sshd_config\.d\/\*\.conf$/d' "$SSHD_MAIN" 2>/dev/null || true
+        rm -f "$SSHD_CONF"
+        echo "ttrack: WARNING: sshd config validation failed — ForceCommand not installed" >&2
+        exit 0  # non-fatal: package installs but SSH recording disabled
     fi
+fi
+# Reload sshd now that config is known valid.
+if command -v systemctl >/dev/null 2>&1; then
+    systemctl reload ssh 2>/dev/null || systemctl reload sshd 2>/dev/null || true
 fi
 
 # Enable and (re)start the collector daemon if systemd is present.
@@ -70,7 +76,7 @@ if command -v systemctl >/dev/null 2>&1; then
     systemctl restart ttrackd.service || true
     # Wait briefly for the daemon to create the key.
     i=0
-    while [ ! -f /var/lib/ttrack/.ttrack.key ] && [ "$i" -lt 5 ]; do
+    while [ ! -f /var/lib/ttrack/.ttrack.key ] && [ "$i" -lt 30 ]; do
         sleep 1
         i=$((i + 1))
     done

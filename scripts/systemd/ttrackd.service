@@ -21,6 +21,13 @@ NoNewPrivileges=yes
 ProtectKernelTunables=yes
 ProtectControlGroups=yes
 RestrictAddressFamilies=AF_UNIX
+PrivateDevices=yes
+RestrictSUIDSGID=yes
+SystemCallArchitectures=native
+UMask=0077
+MemoryMax=512M
+TasksMax=256
+ProtectHome=read-only
 
 [Install]
 WantedBy=multi-user.target
