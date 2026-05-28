@@ -129,7 +129,7 @@ chmod +x ttrack && sudo install -m755 ttrack /usr/bin/ttrack
 
 > **Note:** CI publishes a new release on every push to `main`. The commands above always fetch the latest.
 
-Packages install `ttrack` to `/usr/bin`, the `ttrackd` daemon to `/usr/libexec`, a systemd unit, the bash completion, and the auto-record login hook. The post-install step creates `/var/lib/ttrack` (root-only), writes `/etc/ttrack/ttrack.conf` with all defaults visible, and enables `ttrackd`.
+Packages install `ttrack` to `/usr/bin`, the `ttrackd` daemon to `/usr/libexec`, a systemd unit, the bash completion, and the auto-record login hook. The post-install step creates `/var/lib/ttrack` (root-only), creates `/var/log/ttrack` for daemon logs, writes `/etc/ttrack/ttrack.conf` with all defaults visible, and enables `ttrackd`.
 
 ### From source
 
@@ -375,6 +375,8 @@ dial_timeout_sec       = 1s
 eof_grace_ms           = 500ms
 ansible_output_cap     = 8192
 scroll_buffer          = 32768
+log_level              = 3  (0=off 1=error 2=warn 3=info 4=debug 5=trace)
+log_file               = /var/log/ttrack/ttrack.log
 ttrack: config OK
 ```
 
@@ -389,6 +391,8 @@ ttrack: config OK
 | `eof_grace_ms` | `500` | `TTRACK_EOF_GRACE_MS` | Ms before force-closing PTY on stdin EOF |
 | `ansible_output_cap` | `8192` | `TTRACK_ANSIBLE_OUTPUT_CAP` | Max bytes stored per Ansible task output |
 | `scroll_buffer` | `32768` | `TTRACK_SCROLL_BUFFER` | PTY read buffer size in bytes (min 4096) |
+| `log_level` | `3` | `TTRACK_LOG_LEVEL` | Daemon log verbosity (`0` off through `5` trace) |
+| `log_file` | `/var/log/ttrack/ttrack.log` | `TTRACK_LOG_FILE` | Daemon logfile path; empty disables file logging |
 
 Restart `ttrackd` after editing: `sudo systemctl restart ttrackd`.
 
@@ -410,6 +414,8 @@ Restart `ttrackd` after editing: `sudo systemctl restart ttrackd`.
 | `/var/lib/ttrack/` | `root:root 0700` | central store |
 | `/var/lib/ttrack/<user>/<id>.cast` | `root:root 0600` | encrypted recording |
 | `/var/lib/ttrack/.ttrack.key` | `root:root 0600`, `chattr +i` | per-server AES key (immutable) |
+| `/var/log/ttrack/` | `root:root 0750` | daemon log directory |
+| `/var/log/ttrack/ttrack.log` | `root:root 0640` | daemon logfile |
 | `/run/ttrackd.sock` | `root 0666` | recorder connect socket |
 | `/etc/profile.d/ttrack-autorec.sh` | `root 0644` | optional auto-record login hook |
 | `~/.local/share/ttrack/` | the user | local fail-open recordings |
@@ -419,6 +425,7 @@ Restart `ttrackd` after editing: `sudo systemctl restart ttrackd`.
 ```bash
 sudo systemctl status ttrackd
 sudo systemctl restart ttrackd
+sudo tail -f /var/log/ttrack/ttrack.log
 sudo journalctl -u ttrackd --no-pager
 ```
 
@@ -451,6 +458,7 @@ Local (plaintext) recordings are viewable with `asciinema cat` and playable with
 
 ```bash
 sudo systemctl status ttrackd
+sudo tail -n 100 /var/log/ttrack/ttrack.log
 sudo journalctl -u ttrackd --since '5 min ago' --no-pager
 ```
 

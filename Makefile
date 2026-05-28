@@ -29,6 +29,7 @@ install: build
 	install -Dm755 scripts/ttrack-ssh-wrap.sh $(DESTDIR)/usr/libexec/ttrack-ssh-wrap
 	install -Dm644 scripts/sshd-forcecommand.conf.example $(DESTDIR)$(PREFIX)/share/doc/ttrack/sshd-forcecommand.conf.example
 	install -dm700 $(DESTDIR)/var/lib/ttrack
+	install -dm750 $(DESTDIR)/var/log/ttrack
 
 packages: rpm deb
 

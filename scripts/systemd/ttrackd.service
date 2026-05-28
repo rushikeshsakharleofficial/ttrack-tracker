@@ -14,7 +14,7 @@ RestartSec=2
 User=root
 # Hardening: it only needs its socket, the central store, and user home spools.
 ProtectSystem=full
-ReadWritePaths=/var/lib/ttrack /var/run
+ReadWritePaths=/var/lib/ttrack /var/log/ttrack /var/run
 NoNewPrivileges=yes
 ProtectKernelTunables=yes
 ProtectControlGroups=yes

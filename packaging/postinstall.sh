@@ -7,6 +7,11 @@ mkdir -p /var/lib/ttrack
 chown root:root /var/lib/ttrack
 chmod 0700 /var/lib/ttrack
 
+# Log directory: root-owned normal logfile for ttrackd alongside journald.
+mkdir -p /var/log/ttrack
+chown root:root /var/log/ttrack
+chmod 0750 /var/log/ttrack
+
 # Install default config on first deploy (never overwrite existing config).
 TTRACK_CONF=/etc/ttrack/ttrack.conf
 if [ ! -f "$TTRACK_CONF" ]; then

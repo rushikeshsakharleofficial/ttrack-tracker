@@ -40,6 +40,9 @@ func TestDefaults(t *testing.T) {
 	if cfg.LogLevel != 3 {
 		t.Errorf("LogLevel = %d, want 3", cfg.LogLevel)
 	}
+	if cfg.LogFile != "/var/log/ttrack/ttrack.log" {
+		t.Errorf("LogFile = %q, want /var/log/ttrack/ttrack.log", cfg.LogFile)
+	}
 }
 
 func TestResolvedKeyFile(t *testing.T) {
@@ -88,13 +91,17 @@ func TestEnvOverridesFile(t *testing.T) {
 	resetForTest(t)
 	dir := t.TempDir()
 	f := filepath.Join(dir, "ttrack.conf")
-	os.WriteFile(f, []byte("socket_path = /from/file.sock\n"), 0o644)
+	os.WriteFile(f, []byte("socket_path = /from/file.sock\nlog_file = /from/file.log\n"), 0o644)
 	t.Setenv("TTRACK_CONFIG", f)
 	t.Setenv("TTRACKD_SOCK", "/from/env.sock")
+	t.Setenv("TTRACK_LOG_FILE", "/from/env.log")
 
 	cfg := Load()
 	if cfg.SocketPath != "/from/env.sock" {
 		t.Errorf("SocketPath = %q, want /from/env.sock (env wins)", cfg.SocketPath)
+	}
+	if cfg.LogFile != "/from/env.log" {
+		t.Errorf("LogFile = %q, want /from/env.log (env wins)", cfg.LogFile)
 	}
 }
 

@@ -30,6 +30,12 @@ contents:
     dst: /usr/libexec/ttrackd
     file_info:
       mode: 0755
+  - dst: /var/log/ttrack
+    type: dir
+    file_info:
+      mode: 0750
+      owner: root
+      group: root
   - src: ./scripts/systemd/ttrackd.service
     dst: /lib/systemd/system/ttrackd.service
     file_info:

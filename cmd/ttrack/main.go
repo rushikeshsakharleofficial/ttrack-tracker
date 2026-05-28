@@ -387,6 +387,7 @@ func runConfigCheck() int {
 	fmt.Printf("%-22s = %d\n", "ansible_output_cap", cfg.AnsibleOutputCap)
 	fmt.Printf("%-22s = %d\n", "scroll_buffer", cfg.ScrollBuffer)
 	fmt.Printf("%-22s = %d  (0=off 1=error 2=warn 3=info 4=debug 5=trace)\n", "log_level", cfg.LogLevel)
+	fmt.Printf("%-22s = %s\n", "log_file", cfg.LogFile)
 	if auth.IsSet() {
 		fmt.Printf("%-22s = SET\n", "playback_password")
 	} else {
@@ -403,6 +404,7 @@ func runConfigCheck() int {
 		{"TTRACK_ANSIBLE_OUTPUT_CAP", os.Getenv("TTRACK_ANSIBLE_OUTPUT_CAP")},
 		{"TTRACK_SCROLL_BUFFER", os.Getenv("TTRACK_SCROLL_BUFFER")},
 		{"TTRACK_LOG_LEVEL", os.Getenv("TTRACK_LOG_LEVEL")},
+		{"TTRACK_LOG_FILE", os.Getenv("TTRACK_LOG_FILE")},
 	}
 	for _, ov := range overrides {
 		if ov[1] != "" {

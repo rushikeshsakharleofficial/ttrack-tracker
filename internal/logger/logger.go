@@ -15,8 +15,10 @@ package logger
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"os"
+	"path/filepath"
 	"sync/atomic"
 )
 
@@ -47,6 +49,32 @@ func Set(l Level) { current.Store(int32(l)) }
 
 // Get returns the current log level.
 func Get() Level { return Level(current.Load()) }
+
+// TeeToFile sends future log output to the existing logger output and path.
+// Parent directories are created when missing. The returned function restores
+// the previous output and closes the file.
+func TeeToFile(path string) (func() error, error) {
+	if path == "" {
+		return func() error { return nil }, nil
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+		return nil, err
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o640)
+	if err != nil {
+		return nil, err
+	}
+	if err := f.Chmod(0o640); err != nil {
+		_ = f.Close()
+		return nil, err
+	}
+	prev := log.Writer()
+	log.SetOutput(io.MultiWriter(prev, f))
+	return func() error {
+		log.SetOutput(prev)
+		return f.Close()
+	}, nil
+}
 
 // Errorf logs at level ERROR (1).
 func Errorf(format string, args ...any) { emit(LevelError, "ERROR", format, args...) }

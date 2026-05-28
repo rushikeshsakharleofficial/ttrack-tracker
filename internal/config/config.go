@@ -38,6 +38,8 @@ type Config struct {
 	// LogLevel controls logging verbosity (0=off, 1=error, 2=warn, 3=info, 4=debug, 5=trace).
 	// Default 3 (INFO). Set to 0 to silence all log output.
 	LogLevel int
+	// LogFile is the daemon log file path. Empty disables file logging.
+	LogFile string
 }
 
 // defaults returns a Config populated with factory defaults.
@@ -51,6 +53,7 @@ func defaults() Config {
 		AnsibleOutputCap: 8 * 1024,
 		ScrollBuffer:     32 * 1024,
 		LogLevel:         3,
+		LogFile:          "/var/log/ttrack/ttrack.log",
 	}
 }
 
@@ -159,6 +162,8 @@ func applyKey(cfg *Config, k, v string) {
 		if n, err := strconv.Atoi(v); err == nil && n >= 0 && n <= 5 {
 			cfg.LogLevel = n
 		}
+	case "log_file":
+		cfg.LogFile = v
 	}
 }
 
@@ -198,5 +203,8 @@ func applyEnv(cfg *Config) {
 		if n, err := strconv.Atoi(v); err == nil && n >= 0 && n <= 5 {
 			cfg.LogLevel = n
 		}
+	}
+	if v := os.Getenv("TTRACK_LOG_FILE"); v != "" {
+		cfg.LogFile = v
 	}
 }

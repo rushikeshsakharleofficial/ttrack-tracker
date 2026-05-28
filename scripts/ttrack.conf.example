@@ -36,3 +36,7 @@ scroll_buffer = 32768
 #   5 = trace   — every read/write operation
 # Override: TTRACK_LOG_LEVEL=<n>
 log_level = 3
+
+# Daemon log file. Empty disables file logging and leaves logs in journald only.
+# Override: TTRACK_LOG_FILE=<path>
+log_file = /var/log/ttrack/ttrack.log
