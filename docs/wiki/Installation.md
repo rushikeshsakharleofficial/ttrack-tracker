@@ -12,21 +12,21 @@ Every push to `main` publishes an `rpm`, a `deb`, and a static binary on the [re
 ### Debian / Ubuntu (.deb)
 
 ```bash
-curl -fLO https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases/download/v1.0.2/ttrack_1.0.2_amd64.deb
-sudo apt install ./ttrack_1.0.2_amd64.deb
+curl -fLO https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases/download/v1.0.5/ttrack_1.0.5_amd64.deb
+sudo apt install ./ttrack_1.0.5_amd64.deb
 ```
 
 ### RHEL / Rocky / Fedora (.rpm)
 
 ```bash
-curl -fLO https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases/download/v1.0.2/ttrack-1.0.2-1.x86_64.rpm
-sudo dnf install ./ttrack-1.0.2-1.x86_64.rpm
+curl -fLO https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases/download/v1.0.5/ttrack-1.0.5-1.x86_64.rpm
+sudo dnf install ./ttrack-1.0.5-1.x86_64.rpm
 ```
 
 ### Static binary (any distro)
 
 ```bash
-curl -fL -o ttrack https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases/download/v1.0.2/ttrack-1.0.2-linux-amd64
+curl -fL -o ttrack https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases/download/v1.0.5/ttrack-1.0.5-linux-amd64
 chmod +x ttrack && sudo install -m755 ttrack /usr/bin/ttrack
 ```
 
@@ -62,7 +62,7 @@ ttrack --version
 ```
 
 ```
-ttrack v1.0.2
+ttrack v1.0.5
 ```
 
 ```bash
