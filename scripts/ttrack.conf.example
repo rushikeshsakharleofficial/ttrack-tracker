@@ -1,23 +1,24 @@
 # ttrack runtime configuration
-# File is read from /etc/ttrack/ttrack.conf (override: TTRACK_CONFIG env var)
-# All keys are optional — built-in defaults are shown below.
+# File: /etc/ttrack/ttrack.conf  (override path: TTRACK_CONFIG env var)
 # Env vars always override this file (TTRACKD_SOCK, TTRACK_CENTRAL_DIR, etc.)
+# Restart ttrackd after editing: systemctl restart ttrackd
 
 # Unix socket path the ttrackd daemon listens on.
-# socket_path = /run/ttrackd.sock
+socket_path = /run/ttrackd.sock
 
 # Root-only directory where encrypted session recordings are stored.
-# central_dir = /var/lib/ttrack
+central_dir = /var/lib/ttrack
 
-# Path to the at-rest encryption key. Relative paths are joined with central_dir.
-# key_file = .ttrack.key
+# Path to the at-rest encryption key.
+# Relative paths are joined with central_dir; empty = <central_dir>/.ttrack.key
+key_file = .ttrack.key
 
 # Seconds to wait when connecting to ttrackd (float, e.g. 0.5 or 2).
-# dial_timeout_sec = 1
+dial_timeout_sec = 1
 
 # Milliseconds between stdin EOF Ctrl-D and force-closing the PTY master.
 # Increase if bash takes longer to exit gracefully on your system.
-# eof_grace_ms = 500
+eof_grace_ms = 500
 
-# Maximum bytes stored per ansible task stdout/stderr output (0 = no cap).
-# ansible_output_cap = 8192
+# Maximum bytes stored per ansible task stdout/stderr output.
+ansible_output_cap = 8192

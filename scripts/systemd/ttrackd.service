@@ -6,6 +6,7 @@ After=network.target
 [Service]
 Type=simple
 ExecStart=/usr/libexec/ttrackd
+Environment=TTRACK_CONFIG=/etc/ttrack/ttrack.conf
 Restart=on-failure
 RestartSec=2
 # The daemon must run as root to own /var/lib/ttrack and read user-local
