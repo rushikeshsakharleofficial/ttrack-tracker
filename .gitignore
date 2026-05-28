@@ -20,3 +20,10 @@ scripts/ansible/__pycache__/
 docs/superpowers/
 .antigravitycli/
 /ttrack
+
+# ruflo / claude-flow runtime artifacts
+.claude-flow/
+.mcp.json
+agentdb.rvf
+agentdb.rvf.lock
+ruvector.db
