@@ -285,17 +285,21 @@ func handleRec(conn *net.UnixConn, br *bufio.Reader, cred *unix.Ucred, reg *regi
 
 	sess := &session{f: f, enc: enc, subs: map[net.Conn]struct{}{}}
 	reg.add(id, sess, path)
+	logger.Infof("ttrackd: session started  user=%-20s id=%s", uname, id)
+	var totalBytes int64
 	defer func() {
 		if err := sess.close(); err != nil {
 			logger.Warnf("ttrackd: close %s: %v", path, err)
 		}
 		reg.remove(id)
+		logger.Infof("ttrackd: session closed   user=%-20s id=%s bytes=%d", uname, id, totalBytes)
 	}()
 
 	buf := make([]byte, 32*1024)
 	for {
 		n, rerr := br.Read(buf)
 		if n > 0 {
+			totalBytes += int64(n)
 			if err := sess.write(buf[:n]); err != nil {
 				logger.Warnf("ttrackd: write %s (uid=%d): %v — session truncated", path, cred.Uid, err)
 				return
@@ -352,6 +356,11 @@ func handleAnsible(conn *net.UnixConn, br *bufio.Reader, runID string, cred *uni
 		f.Close()
 		return
 	}
+	logger.Infof("ttrackd: ansible run started user=%-20s run=%s", uname, runID)
+	var ansibleBytes int64
+	defer func() {
+		logger.Infof("ttrackd: ansible run stored  user=%-20s run=%s bytes=%d", uname, runID, ansibleBytes)
+	}()
 	defer f.Close()
 	defer f.Sync()
 
@@ -359,6 +368,7 @@ func handleAnsible(conn *net.UnixConn, br *bufio.Reader, runID string, cred *uni
 	for {
 		n, rerr := br.Read(buf)
 		if n > 0 {
+			ansibleBytes += int64(n)
 			if _, werr := enc.Write(buf[:n]); werr != nil {
 				return
 			}
