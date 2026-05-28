@@ -10,16 +10,19 @@ _ttrack() {
 
     # Top-level subcommand.
     if [ "$COMP_CWORD" -eq 1 ]; then
-        COMPREPLY=( $(compgen -W "rec play ls ls-user play-user tail tree search export prune ansible completion help" -- "$cur") )
+        COMPREPLY=( $(compgen -W "rec play ls tail tree search export prune ansible completion version --check help" -- "$cur") )
         return
     fi
 
     # Flags that take a value.
     case "$prev" in
-        --speed|--idle)
+        --speed|--idle|-n)
             return ;;  # numeric, no completion
         -o)
             COMPREPLY=( $(compgen -f -- "$cur") )
+            return ;;
+        --user)
+            COMPREPLY=( $(compgen -W "$(ttrack __complete users 2>/dev/null)" -- "$cur") )
             return ;;
     esac
 
@@ -27,17 +30,18 @@ _ttrack() {
         rec)
             COMPREPLY=( $(compgen -W "-q -o" -- "$cur") ) ;;
         play)
-            COMPREPLY=( $(compgen -W "--speed --idle $(ttrack __complete local-sessions 2>/dev/null)" -- "$cur") ) ;;
-        ls-user)
-            COMPREPLY=( $(compgen -W "$(ttrack __complete users 2>/dev/null)" -- "$cur") ) ;;
-        play-user)
-            COMPREPLY=( $(compgen -W "--speed --idle $(ttrack __complete central-sessions 2>/dev/null)" -- "$cur") ) ;;
-        tail|export)
+            # auto-detect: complete both local sessions and central sessions
+            COMPREPLY=( $(compgen -W "--speed --idle $(ttrack __complete local-sessions 2>/dev/null) $(ttrack __complete central-sessions 2>/dev/null)" -- "$cur") ) ;;
+        ls)
+            COMPREPLY=( $(compgen -W "--all --user" -- "$cur") ) ;;
+        tail)
+            COMPREPLY=( $(compgen -W "-f -n $(ttrack __complete central-sessions 2>/dev/null)" -- "$cur") ) ;;
+        export)
             COMPREPLY=( $(compgen -W "$(ttrack __complete central-sessions 2>/dev/null)" -- "$cur") ) ;;
         search)
-            COMPREPLY=( $(compgen -W "--from --to --user -i" -- "$cur") ) ;;
+            COMPREPLY=( $(compgen -W "--from --to --user -i --all" -- "$cur") ) ;;
         ansible)
-            COMPREPLY=( $(compgen -W "list show incoming" -- "$cur") ) ;;
+            COMPREPLY=( $(compgen -W "list show" -- "$cur") ) ;;
         completion)
             COMPREPLY=( $(compgen -W "bash" -- "$cur") ) ;;
         *)
