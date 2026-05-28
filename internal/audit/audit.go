@@ -6,10 +6,6 @@ package audit
 import (
 	"bufio"
 	"bytes"
-	"crypto/rand"
-	"crypto/sha256"
-	"crypto/subtle"
-	"encoding/hex"
 	"flag"
 	"fmt"
 	"io"
@@ -21,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/term"
 
 	"ttrack/internal/cast"
@@ -423,8 +420,8 @@ func prunePasswordGate(in *bufio.Reader) error {
 
 func setPrunePassword(in *bufio.Reader) error {
 	p1 := readPassword(in, "New prune password: ")
-	if len(p1) < 4 {
-		return fmt.Errorf("password too short (min 4 chars)")
+	if len(p1) < 8 {
+		return fmt.Errorf("password too short (min 8 chars)")
 	}
 	if readPassword(in, "Confirm password: ") != p1 {
 		return fmt.Errorf("passwords do not match")
@@ -441,25 +438,22 @@ func setPrunePassword(in *bufio.Reader) error {
 }
 
 func hashPassword(pw string) (string, error) {
-	salt := make([]byte, 16)
-	if _, err := rand.Read(salt); err != nil {
+	h, err := bcrypt.GenerateFromPassword([]byte(pw), 12)
+	if err != nil {
 		return "", err
 	}
-	h := sha256.Sum256(append(salt, []byte(pw)...))
-	return hex.EncodeToString(salt) + "$" + hex.EncodeToString(h[:]), nil
+	return string(h), nil
 }
 
 func verifyPassword(rec, pw string) bool {
-	parts := strings.SplitN(strings.TrimSpace(rec), "$", 2)
-	if len(parts) != 2 {
+	stored := strings.TrimSpace(rec)
+	// Bcrypt hashes always start with "$2".
+	// Legacy SHA-256 hashes (salt$hash hex) do not — treat as invalid,
+	// forcing the operator to re-set the password via "set-prune-password".
+	if !strings.HasPrefix(stored, "$2") {
 		return false
 	}
-	salt, err := hex.DecodeString(parts[0])
-	if err != nil {
-		return false
-	}
-	h := sha256.Sum256(append(salt, []byte(pw)...))
-	return subtle.ConstantTimeCompare([]byte(hex.EncodeToString(h[:])), []byte(parts[1])) == 1
+	return bcrypt.CompareHashAndPassword([]byte(stored), []byte(pw)) == nil
 }
 
 func readPassword(in *bufio.Reader, prompt string) string {
