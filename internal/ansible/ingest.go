@@ -104,6 +104,12 @@ func sendToDaemon(runID string, data []byte) error {
 	if _, err := conn.Write(data); err != nil {
 		return err
 	}
+	// Read daemon acknowledgement — ERR means the run was rejected.
+	br := bufio.NewReader(conn)
+	resp, _ := br.ReadString('\n')
+	if strings.HasPrefix(strings.TrimSpace(resp), "ERR") {
+		return fmt.Errorf("daemon rejected ansible run: %s", strings.TrimSpace(resp))
+	}
 	return nil
 }
 

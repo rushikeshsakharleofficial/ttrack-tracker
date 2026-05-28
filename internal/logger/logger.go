@@ -36,6 +36,9 @@ const (
 
 var current atomic.Int32
 
+// closeCurrent holds the closer for the active log file so Reopen can swap it.
+var closeCurrent func() error = func() error { return nil }
+
 func init() {
 	current.Store(int32(LevelInfo))
 	// Under systemd journald, timestamps are added automatically.
@@ -74,10 +77,26 @@ func TeeToFile(path string) (func() error, error) {
 	}
 	prev := log.Writer()
 	log.SetOutput(io.MultiWriter(prev, f))
-	return func() error {
+	restore := func() error {
 		log.SetOutput(prev)
 		return f.Close()
-	}, nil
+	}
+	closeCurrent = restore // save so Reopen can swap
+	return restore, nil
+}
+
+// Reopen closes and reopens the log file at path. Call on SIGHUP so logrotate
+// can rename the old file without losing future log lines.
+func Reopen(path string) error {
+	if path == "" {
+		return nil
+	}
+	old := closeCurrent
+	_, err := TeeToFile(path)
+	if err != nil {
+		return err
+	}
+	return old() // close old fd
 }
 
 // Errorf logs at level ERROR (1).

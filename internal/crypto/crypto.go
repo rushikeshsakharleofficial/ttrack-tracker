@@ -116,6 +116,10 @@ func (d *decReader) Read(p []byte) (int, error) {
 		if int(flen) < d.gcm.NonceSize() {
 			return 0, io.EOF
 		}
+		const maxFrameSize = 1 << 20 // 1 MiB — largest expected PTY write chunk
+		if flen > maxFrameSize {
+			return 0, io.ErrUnexpectedEOF // corrupt or truncated file
+		}
 		frame := make([]byte, flen)
 		if _, err := io.ReadFull(d.r, frame); err != nil {
 			return 0, io.EOF // truncated trailing frame: stop at last complete one
