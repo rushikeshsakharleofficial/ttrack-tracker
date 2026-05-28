@@ -34,6 +34,9 @@ func TestDefaults(t *testing.T) {
 	if cfg.AnsibleOutputCap != 8*1024 {
 		t.Errorf("AnsibleOutputCap = %d, want 8192", cfg.AnsibleOutputCap)
 	}
+	if cfg.ScrollBuffer != 32*1024 {
+		t.Errorf("ScrollBuffer = %d, want 32768", cfg.ScrollBuffer)
+	}
 }
 
 func TestResolvedKeyFile(t *testing.T) {
@@ -100,7 +103,8 @@ func TestBadValuesFallToDefault(t *testing.T) {
 	os.WriteFile(f, []byte(
 		"dial_timeout_sec = not-a-number\n"+
 			"eof_grace_ms = -99\n"+
-			"ansible_output_cap = 0\n",
+			"ansible_output_cap = 0\n"+
+			"scroll_buffer = 100\n",
 	), 0o644)
 	t.Setenv("TTRACK_CONFIG", f)
 
@@ -113,6 +117,9 @@ func TestBadValuesFallToDefault(t *testing.T) {
 	}
 	if cfg.AnsibleOutputCap != 8*1024 {
 		t.Errorf("AnsibleOutputCap = %d, want default 8192", cfg.AnsibleOutputCap)
+	}
+	if cfg.ScrollBuffer != 32*1024 {
+		t.Errorf("ScrollBuffer = %d, want default 32768", cfg.ScrollBuffer)
 	}
 }
 

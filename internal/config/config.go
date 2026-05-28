@@ -32,6 +32,9 @@ type Config struct {
 	EOFGrace time.Duration
 	// AnsibleOutputCap is the maximum bytes stored per ansible task output.
 	AnsibleOutputCap int
+	// ScrollBuffer is the PTY read buffer size in bytes used during recording.
+	// Larger values reduce syscall overhead on high-throughput sessions.
+	ScrollBuffer int
 }
 
 // defaults returns a Config populated with factory defaults.
@@ -43,6 +46,7 @@ func defaults() Config {
 		DialTimeout:      1 * time.Second,
 		EOFGrace:         500 * time.Millisecond,
 		AnsibleOutputCap: 8 * 1024,
+		ScrollBuffer:     32 * 1024,
 	}
 }
 
@@ -143,6 +147,10 @@ func applyKey(cfg *Config, k, v string) {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			cfg.AnsibleOutputCap = n
 		}
+	case "scroll_buffer":
+		if n, err := strconv.Atoi(v); err == nil && n >= 4096 {
+			cfg.ScrollBuffer = n
+		}
 	}
 }
 
@@ -171,6 +179,11 @@ func applyEnv(cfg *Config) {
 	if v := os.Getenv("TTRACK_ANSIBLE_OUTPUT_CAP"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			cfg.AnsibleOutputCap = n
+		}
+	}
+	if v := os.Getenv("TTRACK_SCROLL_BUFFER"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 4096 {
+			cfg.ScrollBuffer = n
 		}
 	}
 }

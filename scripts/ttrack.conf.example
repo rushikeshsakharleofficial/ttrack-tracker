@@ -22,3 +22,7 @@ eof_grace_ms = 500
 
 # Maximum bytes stored per ansible task stdout/stderr output.
 ansible_output_cap = 8192
+
+# PTY read buffer size in bytes (minimum 4096). Larger = fewer syscalls on
+# high-throughput sessions; smaller = lower per-session memory usage.
+scroll_buffer = 32768

@@ -209,7 +209,7 @@ func makeRawRestore(fd int) func() {
 func pumpOutput(ptmx *os.File, cw *cast.Writer, start time.Time, wg *sync.WaitGroup) {
 	defer wg.Done()
 	const flushInterval = 100 * time.Millisecond
-	buf := make([]byte, 32*1024)
+	buf := make([]byte, config.Load().ScrollBuffer)
 	lastFlush := time.Now()
 	for {
 		n, rerr := ptmx.Read(buf)

@@ -322,6 +322,7 @@ func runConfigCheck() int {
 	fmt.Printf("%-22s = %.3gs\n", "dial_timeout_sec", cfg.DialTimeout.Seconds())
 	fmt.Printf("%-22s = %dms\n", "eof_grace_ms", cfg.EOFGrace.Milliseconds())
 	fmt.Printf("%-22s = %d\n", "ansible_output_cap", cfg.AnsibleOutputCap)
+	fmt.Printf("%-22s = %d\n", "scroll_buffer", cfg.ScrollBuffer)
 
 	// Warn about active env overrides so user knows values may differ from file.
 	overrides := [][2]string{
@@ -331,6 +332,7 @@ func runConfigCheck() int {
 		{"TTRACK_DIAL_TIMEOUT_SEC", os.Getenv("TTRACK_DIAL_TIMEOUT_SEC")},
 		{"TTRACK_EOF_GRACE_MS", os.Getenv("TTRACK_EOF_GRACE_MS")},
 		{"TTRACK_ANSIBLE_OUTPUT_CAP", os.Getenv("TTRACK_ANSIBLE_OUTPUT_CAP")},
+		{"TTRACK_SCROLL_BUFFER", os.Getenv("TTRACK_SCROLL_BUFFER")},
 	}
 	for _, ov := range overrides {
 		if ov[1] != "" {
