@@ -82,14 +82,14 @@ func TestRenderBarGeometry(t *testing.T) {
 	if barCol < 2 {
 		t.Errorf("barCol = %d, want >= 2", barCol)
 	}
-	// Played portion (heavy line) should be about a quarter (30/120) of the bar.
-	filled := strings.Count(line, "━")
-	wantFilled := int(float64(barW-1)*0.25 + 0.5)
+	// Played portion (#) should be about a quarter (30/120) of the bar.
+	filled := strings.Count(line, "#")
+	wantFilled := int(float64(barW)*0.25 + 0.5)
 	if filled != wantFilled {
 		t.Errorf("filled=%d want %d (barW=%d)", filled, wantFilled, barW)
 	}
-	if !strings.Contains(line, "●") {
-		t.Errorf("bar missing position knob: %q", line)
+	if !strings.Contains(line, "[") || !strings.Contains(line, "]") {
+		t.Errorf("bar missing brackets: %q", line)
 	}
 	// Visible width should not exceed the terminal width.
 	if vl := visibleLen(line); vl > width {
@@ -100,7 +100,7 @@ func TestRenderBarGeometry(t *testing.T) {
 
 func TestRenderBarGotoField(t *testing.T) {
 	line, _, _ := renderBar(100, 0, 60, 1, true, true, "1:23")
-	if !strings.Contains(line, "goto 1:23") {
+	if !strings.Contains(line, "goto:") || !strings.Contains(line, "1:23") {
 		t.Errorf("goto bar missing input field: %q", line)
 	}
 }

@@ -15,11 +15,11 @@ const (
 	mouseEnable  = "\x1b[?1000h\x1b[?1006h"
 	mouseDisable = "\x1b[?1006l\x1b[?1000l"
 
+	// clrReset is used by scrollback.go truncLine to close dangling SGR sequences.
 	clrReset = "\x1b[0m"
-	clrBold  = "\x1b[1m"
-	clrGreen = "\x1b[32m"
-	clrDim   = "\x1b[2m"
-	clrCyan  = "\x1b[36m"
+	// clrBold/clrCyan used by chapters.go chapter-list UI.
+	clrBold = "\x1b[1m"
+	clrCyan = "\x1b[36m"
 )
 
 // termSize returns the terminal width and height, with 80x24 fallback.
@@ -31,7 +31,7 @@ func termSize() (int, int) {
 	return w, h
 }
 
-// formatClock renders seconds as MM:SS (or HMM:SS-style overflow past 99 min).
+// formatClock renders seconds as MM:SS (or HH:MM:SS-style overflow past 99 min).
 func formatClock(secs float64) string {
 	if secs < 0 {
 		secs = 0
@@ -79,46 +79,58 @@ func slower(s float64) float64 {
 	return s
 }
 
-// renderBar builds the colored status-bar line and returns it with the 1-based
-// column of the first progress-bar cell and the bar width, for mouse seeking.
+// renderBar builds the plain-text status bar and returns it with the 1-based
+// column of the first progress-bar fill cell and the inner bar width,
+// for mouse-click seeking.
+//
+// Format (no ANSI color):
+//
+//	> 01:23 / 05:00 [####      ]  27%  1x   <-/-> seek  pgup scroll  g goto  spc play  q quit
 func renderBar(width int, vt, lastT, speed float64, paused, inGoto bool, gotoBuf string) (line string, barCol, barW int) {
-	icon := "▶" // ▶
+	icon := ">"
 	if paused {
-		icon = "⏸" // ⏸
+		icon = "||"
 	}
-	left := fmt.Sprintf("%s %s / %s ", icon, formatClock(vt), formatClock(lastT))
+	left := fmt.Sprintf(" %s %s / %s ", icon, formatClock(vt), formatClock(lastT))
 
 	var right string
 	if inGoto {
-		right = fmt.Sprintf(" goto %s_  (enter jump · any other key cancel)", gotoBuf)
+		right = fmt.Sprintf(" goto: %s_  (enter: jump  esc: cancel)", gotoBuf)
 	} else {
 		pct := 0.0
 		if lastT > 0 {
 			pct = vt / lastT * 100
 		}
-		right = fmt.Sprintf(" %3.0f%%  %s   ←/→ seek · pgup scroll · g goto · space play · q quit", pct, formatSpeed(speed))
+		right = fmt.Sprintf("  %3.0f%%  %s   <-/-> seek  pgup scroll  g goto  spc play  q quit", pct, formatSpeed(speed))
 	}
 
-	barW = width - utf8.RuneCountInString(left) - utf8.RuneCountInString(right)
-	if barW < 10 {
-		barW = 10
+	// Available columns for the [####   ] bar including the two bracket chars.
+	avail := width - utf8.RuneCountInString(left) - utf8.RuneCountInString(right)
+	if avail < 7 {
+		avail = 7 // minimum: "[#    ]" = 7
 	}
+	innerW := avail - 2 // subtract [ and ]
+	if innerW < 5 {
+		innerW = 5
+	}
+
 	filled := 0
 	if lastT > 0 {
-		filled = int(float64(barW-1)*vt/lastT + 0.5)
+		filled = int(float64(innerW)*vt/lastT + 0.5)
 	}
-	if filled > barW-1 {
-		filled = barW - 1
+	if filled > innerW {
+		filled = innerW
 	}
 	if filled < 0 {
 		filled = 0
 	}
-	// Thin-line scrubber: heavy line played, a knob at the head, light line ahead.
-	bar := clrGreen + strings.Repeat("━", filled) + clrReset +
-		clrCyan + "●" + clrReset +
-		clrDim + strings.Repeat("─", barW-filled-1) + clrReset
-	line = clrBold + left + clrReset + bar + clrCyan + right + clrReset
-	barCol = utf8.RuneCountInString(left) + 1 // first bar cell follows the left text
+
+	bar := "[" + strings.Repeat("#", filled) + strings.Repeat(" ", innerW-filled) + "]"
+
+	line = left + bar + right
+	// barCol: 1-based column of the first fill char (after the opening "[")
+	barCol = utf8.RuneCountInString(left) + 2
+	barW = innerW
 	return line, barCol, barW
 }
 
@@ -130,9 +142,7 @@ func drawStatus(vt, lastT, speed float64, paused, inGoto bool, gotoBuf string) (
 	// Save cursor; re-assert the scroll region (a recording — e.g. dpkg's
 	// progress bar — may have set its own, which would scroll our reserved row
 	// into the content); go to the bottom row, clear it, disable autowrap (so a
-	// full-width line can't scroll and duplicate content), draw, re-enable
-	// autowrap, restore cursor. Re-setting the region homes the cursor, but the
-	// final restore puts it back, so content placement is unaffected.
+	// full-width line can't scroll), draw, re-enable autowrap, restore cursor.
 	region := ""
 	if h > 1 {
 		region = fmt.Sprintf("\x1b[1;%dr", h-1)
@@ -142,19 +152,23 @@ func drawStatus(vt, lastT, speed float64, paused, inGoto bool, gotoBuf string) (
 }
 
 // drawScrollBar paints the scroll-mode indicator on the given row.
-// Uses DECSC/DECRC so the caller's cursor position is unaffected.
+// Plain text, no color. Uses DECSC/DECRC so caller's cursor is unaffected.
 func drawScrollBar(total, offset, row int) {
 	w, _ := termSize()
 	var msg string
 	if offset == 0 {
-		msg = fmt.Sprintf(" ↑ SCROLL  %d lines  (pgup/↑/wheel · any key: exit scroll)", total)
+		msg = fmt.Sprintf(" [SCROLL] %d lines   pgup/up/wheel: scroll up   any other key: exit", total)
 	} else {
-		msg = fmt.Sprintf(" ↑ SCROLL  -%d/%d  (pgdn/↓/wheel down · any key: exit scroll)", offset, total)
+		msg = fmt.Sprintf(" [SCROLL] -%d/%d   pgdn/down/wheel: scroll down   any other key: exit", offset, total)
 	}
-	runes := []rune(msg)
-	if len(runes) > w {
-		msg = string(runes[:w])
+	// Truncate to terminal width using display columns (visWidth handles wide chars).
+	if visWidth(msg) > w {
+		// clip rune by rune until it fits
+		runes := []rune(msg)
+		for len(runes) > 0 && visWidth(string(runes)) > w {
+			runes = runes[:len(runes)-1]
+		}
+		msg = string(runes)
 	}
-	fmt.Fprintf(os.Stdout, "\x1b7\x1b[%d;1H\x1b[2K\x1b[?7l%s%s%s\x1b[?7h\x1b8",
-		row, clrDim+clrBold, msg, clrReset)
+	fmt.Fprintf(os.Stdout, "\x1b7\x1b[%d;1H\x1b[2K\x1b[?7l%s\x1b[?7h\x1b8", row, msg)
 }
