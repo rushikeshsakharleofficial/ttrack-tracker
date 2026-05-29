@@ -147,14 +147,21 @@ func List(args []string) error {
 	PrintTableHeader(cols, []string{"STATUS", "FILE", "STARTED", "DURATION", "COMMAND"})
 	for _, name := range files {
 		p := filepath.Join(d, name)
-		h, _ := readHeader(p)
+		h, herr := readHeader(p)
 		status := "SAVED"
 		dur := Duration(p)
 		if isActive(name) {
 			status = "ACTIVE"
 			dur += "+"
 		}
-		PrintTableRow(cols, []string{status, name, started(h), dur, trunc(h.Command, cmdW)})
+		command := trunc(h.Command, cmdW)
+		if herr != nil {
+			// Surface unreadable/corrupt recordings instead of silently
+			// rendering blank columns (which looks like an empty session).
+			status = "ERROR"
+			command = trunc("(unreadable)", cmdW)
+		}
+		PrintTableRow(cols, []string{status, name, started(h), dur, command})
 	}
 	return nil
 }
@@ -261,6 +268,10 @@ func Duration(path string) string {
 	if herr != nil {
 		return "-"
 	}
+	// Stream events tracking only the last timestamp. This is intentionally
+	// bounded-memory: events are read one line at a time via the bufio.Reader
+	// and discarded, so duration of an arbitrarily large recording never
+	// buffers the whole file.
 	var last float64
 	for {
 		ev, rerr := cast.ReadEvent(r)

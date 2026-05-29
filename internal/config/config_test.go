@@ -43,6 +43,77 @@ func TestDefaults(t *testing.T) {
 	if cfg.LogFile != "/var/log/ttrack/ttrack.log" {
 		t.Errorf("LogFile = %q, want /var/log/ttrack/ttrack.log", cfg.LogFile)
 	}
+	if cfg.SessionCap != 10 {
+		t.Errorf("SessionCap = %d, want default 10", cfg.SessionCap)
+	}
+}
+
+func TestSessionCapFromFile(t *testing.T) {
+	resetForTest(t)
+	dir := t.TempDir()
+	f := filepath.Join(dir, "ttrack.conf")
+	os.WriteFile(f, []byte("session_cap = 25\n"), 0o644)
+	t.Setenv("TTRACK_CONFIG", f)
+
+	if cfg := Load(); cfg.SessionCap != 25 {
+		t.Errorf("SessionCap = %d, want 25", cfg.SessionCap)
+	}
+}
+
+func TestSessionCapEnvOverrides(t *testing.T) {
+	resetForTest(t)
+	dir := t.TempDir()
+	f := filepath.Join(dir, "ttrack.conf")
+	os.WriteFile(f, []byte("session_cap = 25\n"), 0o644)
+	t.Setenv("TTRACK_CONFIG", f)
+	t.Setenv("TTRACK_SESSION_CAP", "7")
+
+	if cfg := Load(); cfg.SessionCap != 7 {
+		t.Errorf("SessionCap = %d, want 7 (env wins)", cfg.SessionCap)
+	}
+}
+
+func TestSessionCapInvalidFallsToDefault(t *testing.T) {
+	resetForTest(t)
+	dir := t.TempDir()
+	f := filepath.Join(dir, "ttrack.conf")
+	os.WriteFile(f, []byte("session_cap = 0\n"), 0o644)
+	t.Setenv("TTRACK_CONFIG", f)
+
+	if cfg := Load(); cfg.SessionCap != 10 {
+		t.Errorf("SessionCap = %d, want default 10 for invalid value", cfg.SessionCap)
+	}
+}
+
+// TestParseIsFreshAndDoesNotMutateSingleton verifies Parse() re-reads the
+// current environment on every call and never touches the Load() singleton,
+// so the daemon can reload config on SIGHUP without racing other goroutines
+// that hold the shared *Config from Load().
+func TestParseIsFreshAndDoesNotMutateSingleton(t *testing.T) {
+	resetForTest(t)
+	t.Setenv("TTRACK_CONFIG", "/nonexistent/ttrack.conf")
+	t.Setenv("TTRACK_SESSION_CAP", "3")
+
+	cached := Load()
+	if cached.SessionCap != 3 {
+		t.Fatalf("Load() SessionCap = %d, want 3", cached.SessionCap)
+	}
+
+	// Change the environment as if the operator edited config, then reload.
+	os.Setenv("TTRACK_SESSION_CAP", "9")
+	defer os.Unsetenv("TTRACK_SESSION_CAP")
+
+	fresh := Parse()
+	if fresh.SessionCap != 9 {
+		t.Errorf("Parse() SessionCap = %d, want 9 (fresh re-read)", fresh.SessionCap)
+	}
+	// The cached singleton must be untouched.
+	if cached.SessionCap != 3 {
+		t.Errorf("Load() singleton mutated to %d; Parse() must not touch it", cached.SessionCap)
+	}
+	if fresh == cached {
+		t.Error("Parse() returned the singleton pointer; want a fresh independent *Config")
+	}
 }
 
 func TestResolvedKeyFile(t *testing.T) {

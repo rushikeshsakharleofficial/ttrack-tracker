@@ -14,8 +14,9 @@ import (
 	"golang.org/x/term"
 )
 
-// PasswdFile is the path to the bcrypt hash file.
-const PasswdFile = "/etc/ttrack/.playback_passwd"
+// PasswdFile is the path to the bcrypt hash file. It is a var (not a const) so
+// tests can redirect it to a temp location; in production it keeps this default.
+var PasswdFile = "/etc/ttrack/.playback_passwd"
 
 // bcryptCost is the work factor used when hashing new passwords.
 const bcryptCost = 12

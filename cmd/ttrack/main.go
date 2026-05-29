@@ -74,12 +74,7 @@ func main() {
 		err = record.Run(rest)
 	case "play":
 		// Extract target first — needed for ansible pre-check before password prompt.
-		target := ""
-		for _, a := range rest {
-			if !strings.HasPrefix(a, "-") {
-				target = a
-			}
-		}
+		target := lastNonFlagArg(rest)
 		// Pre-check: if target is not a local file, see if it's an ansible run ID.
 		// Give a helpful redirect before the password prompt blocks a TTY.
 		if target != "" {
@@ -107,18 +102,7 @@ func main() {
 		}
 	case "ls", "list":
 		// --all → all users in central store; --user <name> → that user; (none) → local.
-		hasAll := false
-		userVal := ""
-		for i, a := range rest {
-			switch {
-			case a == "--all" || a == "-a":
-				hasAll = true
-			case a == "--user" && i+1 < len(rest):
-				userVal = rest[i+1]
-			case strings.HasPrefix(a, "--user="):
-				userVal = strings.TrimPrefix(a, "--user=")
-			}
-		}
+		hasAll, userVal := parseLsScope(rest)
 		if hasAll {
 			err = audit.LsUser(nil)
 		} else if userVal != "" {
@@ -132,6 +116,11 @@ func main() {
 	case "play-user":
 		err = audit.PlayUser(rest)
 	case "tail":
+		// Password gate — tail reveals recorded output (live or static).
+		if perr := auth.PromptAndVerify(); perr != nil {
+			fmt.Fprintln(os.Stderr, "ttrack:", perr)
+			os.Exit(1)
+		}
 		if len(rest) > 0 && rest[0] == "-f" {
 			err = audit.TailLive(rest[1:])
 		} else {
@@ -140,8 +129,18 @@ func main() {
 	case "tree":
 		err = audit.Tree(rest)
 	case "search":
+		// Password gate — search reveals matching output snippets.
+		if perr := auth.PromptAndVerify(); perr != nil {
+			fmt.Fprintln(os.Stderr, "ttrack:", perr)
+			os.Exit(1)
+		}
 		err = audit.Search(rest)
 	case "export":
+		// Password gate — export reveals the full decrypted session.
+		if perr := auth.PromptAndVerify(); perr != nil {
+			fmt.Fprintln(os.Stderr, "ttrack:", perr)
+			os.Exit(1)
+		}
 		err = audit.Export(rest)
 	case "prune":
 		err = audit.Prune(rest)
@@ -168,6 +167,34 @@ func main() {
 
 func isHelpToken(s string) bool {
 	return s == "help" || s == "-h" || s == "--help"
+}
+
+// lastNonFlagArg returns the last argument that does not start with "-",
+// or "" if there is none. Used to pick the play target from a mixed arg list.
+func lastNonFlagArg(args []string) string {
+	target := ""
+	for _, a := range args {
+		if !strings.HasPrefix(a, "-") {
+			target = a
+		}
+	}
+	return target
+}
+
+// parseLsScope interprets `ls`/`list` flags: --all/-a selects all users in the
+// central store, and --user <name> or --user=<name> selects a single user.
+func parseLsScope(args []string) (all bool, user string) {
+	for i, a := range args {
+		switch {
+		case a == "--all" || a == "-a":
+			all = true
+		case a == "--user" && i+1 < len(args):
+			user = args[i+1]
+		case strings.HasPrefix(a, "--user="):
+			user = strings.TrimPrefix(a, "--user=")
+		}
+	}
+	return all, user
 }
 
 func usage() {

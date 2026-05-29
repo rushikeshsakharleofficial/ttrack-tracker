@@ -5,7 +5,6 @@ package audit
 
 import (
 	"bufio"
-	"bytes"
 	"flag"
 	"fmt"
 	"io"
@@ -13,8 +12,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -83,12 +84,18 @@ func LsUser(args []string) error {
 	store.PrintTableHeader(cols1, []string{"STATUS", "TYPE", "SESSION", "STARTED", "DURATION", "COMMAND"})
 	for _, name := range sessions {
 		p := centralPath(user, name)
-		h, _ := store.Header(p)
+		h, herr := store.Header(p)
 		status := "SAVED"
 		dur := store.Duration(p)
 		if store.IsActive(name) {
 			status = "ACTIVE"
 			dur += "+"
+		}
+		if herr != nil {
+			// Surface a corrupt/unreadable recording instead of a blank row.
+			status = "ERROR"
+			store.PrintTableRow(cols1, []string{status, "?", name, "?", dur, store.Trunc("(unreadable)", cmdW)})
+			continue
 		}
 		typ := sessionKind(h.Command)
 		if typ == "non-interactive" {
@@ -185,7 +192,7 @@ func printUserSessions(user, indent string) {
 	for si, name := range sessions {
 		sbranch, _ := treeBranch(si == len(sessions)-1)
 		p := centralPath(user, name)
-		h, _ := store.Header(p)
+		h, herr := store.Header(p)
 		status := "SAVED"
 		dur := store.Duration(p)
 		if store.IsActive(name) {
@@ -194,6 +201,12 @@ func printUserSessions(user, indent string) {
 		}
 		// Stem without .cast suffix, type abbreviation, no command (tree is for navigation not inspection)
 		stem := strings.TrimSuffix(name, ".cast")
+		if herr != nil {
+			// Surface a corrupt/unreadable recording instead of a blank row.
+			fmt.Printf("%s%s %-28s  %-6s %-5s  %s  %s\n",
+				indent, sbranch, stem, "ERROR", "?", "(unreadable)", dur)
+			continue
+		}
 		typ := "shell"
 		if sessionKind(h.Command) == "non-interactive" {
 			typ = "cmd"
@@ -559,7 +572,10 @@ func TailStatic(args []string) error {
 	if _, herr := cast.ReadHeader(br); herr != nil {
 		return herr
 	}
-	var out bytes.Buffer
+	// Keep only the last N output lines in a bounded ring buffer instead of
+	// accumulating the whole session — memory stays ~N lines regardless of
+	// recording size.
+	ring := newLineRing(*n)
 	for {
 		ev, rerr := cast.ReadEvent(br)
 		if rerr == io.EOF {
@@ -569,28 +585,80 @@ func TailStatic(args []string) error {
 			return rerr
 		}
 		if ev.Type == "o" {
-			out.WriteString(ev.Data)
+			ring.add(ev.Data)
 		}
 	}
-	data := out.Bytes()
-	// Find offset of the Nth-from-last newline so we print the last N lines.
-	count := 0
-	pos := len(data)
-	for pos > 0 && count <= *n {
-		pos--
-		if data[pos] == '\n' {
-			count++
-		}
-	}
-	if count > 0 {
-		pos++ // step past the delimiter newline
-	}
-	_, werr := os.Stdout.Write(data[pos:])
+	_, werr := io.WriteString(os.Stdout, ring.String())
 	return werr
 }
 
 func centralPath(user, name string) string {
 	return filepath.Join(store.CentralDir(), user, name)
+}
+
+// lineRing keeps only the last N completed output lines plus the current
+// partial (un-terminated) line, so tailing a session uses memory bounded to
+// ~N lines regardless of the recording's size. Completed lines are stored
+// without their trailing '\n'; String() reconstructs the exact trailing bytes.
+type lineRing struct {
+	n       int      // max completed lines to keep (>=1)
+	lines   []string // ring of completed lines (without '\n')
+	start   int      // index of the oldest line in lines
+	count   int      // number of completed lines currently held
+	partial []byte   // current line being built (no terminating '\n' yet)
+}
+
+func newLineRing(n int) *lineRing {
+	if n < 1 {
+		n = 1
+	}
+	return &lineRing{n: n, lines: make([]string, n)}
+}
+
+// add feeds one output event, splitting it into completed lines on '\n'.
+func (r *lineRing) add(s string) {
+	for {
+		i := strings.IndexByte(s, '\n')
+		if i < 0 {
+			r.partial = append(r.partial, s...)
+			return
+		}
+		r.partial = append(r.partial, s[:i]...)
+		r.pushLine(string(r.partial))
+		r.partial = r.partial[:0]
+		s = s[i+1:]
+	}
+}
+
+func (r *lineRing) pushLine(line string) {
+	if r.count < r.n {
+		r.lines[(r.start+r.count)%r.n] = line
+		r.count++
+		return
+	}
+	// Full: overwrite the oldest and advance start.
+	r.lines[r.start] = line
+	r.start = (r.start + 1) % r.n
+}
+
+// String reconstructs the last N logical lines as trailing bytes: each
+// completed line is followed by '\n'; any trailing partial line has none.
+// When a partial line is present it counts toward N (the oldest completed
+// line is dropped) so the total stays bounded to N logical lines.
+func (r *lineRing) String() string {
+	var b strings.Builder
+	skip := 0
+	if len(r.partial) > 0 && r.count == r.n {
+		skip = 1 // drop the oldest completed line to make room for the partial
+	}
+	for i := skip; i < r.count; i++ {
+		b.WriteString(r.lines[(r.start+i)%r.n])
+		b.WriteByte('\n')
+	}
+	if len(r.partial) > 0 {
+		b.Write(r.partial)
+	}
+	return b.String()
 }
 
 // Search handles `ttrack search [--from T] [--to T] [--user U] [-i] <pattern>`.
@@ -628,12 +696,47 @@ func Search(args []string) error {
 		return notRoot(err)
 	}
 
-	matched := 0
+	// Build a flat list of scan jobs in deterministic order: users sorted (as
+	// returned by store.Users) and sessions in store order within each user.
+	var jobs []searchJob
 	for _, u := range users {
 		if *userFilter != "" && u != *userFilter {
 			continue
 		}
-		matched += searchUser(u, needle, *ignore, fromT, toT, *all)
+		names, _ := store.UserSessions(u)
+		for _, name := range names {
+			jobs = append(jobs, searchJob{user: u, name: name})
+		}
+	}
+
+	// Scan jobs concurrently with a bounded worker pool, writing each rendered
+	// block into its own indexed slot (no shared mutation). Printing happens
+	// afterwards in original order, so output stays byte-for-byte deterministic.
+	results := make([]string, len(jobs))
+	workers := runtime.NumCPU()
+	if workers < 1 {
+		workers = 1
+	}
+	sem := make(chan struct{}, workers)
+	var wg sync.WaitGroup
+	for i := range jobs {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(i int) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			results[i] = scanSession(jobs[i].user, jobs[i].name, needle, *ignore, fromT, toT, *all)
+		}(i)
+	}
+	wg.Wait()
+
+	matched := 0
+	for _, block := range results {
+		if block == "" {
+			continue
+		}
+		matched++
+		fmt.Print(block)
 	}
 	if matched == 0 {
 		if *all {
@@ -644,6 +747,8 @@ func Search(args []string) error {
 	}
 	return nil
 }
+
+type searchJob struct{ user, name string }
 
 func searchUsage(err error) error {
 	if err != nil {
@@ -702,35 +807,40 @@ func inWindow(ts int64, fromT, toT time.Time) bool {
 	return true
 }
 
-func searchUser(u, needle string, ignore bool, fromT, toT time.Time, all bool) int {
-	names, _ := store.UserSessions(u)
-	matched := 0
-	for _, name := range names {
-		path := centralPath(u, name)
-		h, herr := store.Header(path)
-		if herr != nil {
-			continue
-		}
-		if !inWindow(h.Timestamp, fromT, toT) {
-			continue
-		}
-		var snips []string
-		if !all {
-			cmdMatch, s := scanCast(path, needle, ignore, h)
-			if !cmdMatch && len(s) == 0 {
-				continue
-			}
-			snips = s
-		}
-		matched++
-		fmt.Printf("user=%s  when=%s  session=%s\n",
-			u, store.Started(h), strings.TrimSuffix(name, ".cast"))
-		fmt.Printf("    cmd: %s\n", clean(h.Command))
-		for _, s := range snips {
-			fmt.Printf("    > %s\n", s)
-		}
+// scanSession scans one session and returns the rendered output block (the
+// same lines the old inline Printf calls produced), or "" if it doesn't match
+// and shouldn't be listed. It is pure aside from reading the cast file, so it
+// is safe to call concurrently from the worker pool. A header that can't be
+// read is surfaced as an "(unreadable)" block (issue #10) rather than silently
+// dropped, so operators see corrupt recordings.
+func scanSession(u, name, needle string, ignore bool, fromT, toT time.Time, all bool) string {
+	path := centralPath(u, name)
+	stem := strings.TrimSuffix(name, ".cast")
+	h, herr := store.Header(path)
+	if herr != nil {
+		var b strings.Builder
+		fmt.Fprintf(&b, "user=%s  when=?  session=%s\n", u, stem)
+		fmt.Fprintf(&b, "    cmd: (unreadable)\n")
+		return b.String()
 	}
-	return matched
+	if !inWindow(h.Timestamp, fromT, toT) {
+		return ""
+	}
+	var snips []string
+	if !all {
+		cmdMatch, s := scanCast(path, needle, ignore, h)
+		if !cmdMatch && len(s) == 0 {
+			return ""
+		}
+		snips = s
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "user=%s  when=%s  session=%s\n", u, store.Started(h), stem)
+	fmt.Fprintf(&b, "    cmd: %s\n", clean(h.Command))
+	for _, s := range snips {
+		fmt.Fprintf(&b, "    > %s\n", s)
+	}
+	return b.String()
 }
 
 // scanCast reports whether the recorded command matched, plus up to a few

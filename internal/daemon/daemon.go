@@ -26,6 +26,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
+	"ttrack/internal/config"
 	"ttrack/internal/crypto"
 	"ttrack/internal/logger"
 	"ttrack/internal/store"
@@ -46,30 +47,96 @@ func isTemporary(err error) bool {
 	return false
 }
 
+// subChanCap is the number of chunks buffered per tailer before it is
+// considered lagging and dropped. A chunk is one recorder Read (<=32KiB), so
+// this absorbs a brief stall without unbounded memory growth.
+const subChanCap = 256
+
+// subscriber is a single live tailer. Its conn is written to by a dedicated
+// drain goroutine reading from ch, so a slow/stuck conn never blocks the
+// recorder or other tailers (the fan-out is decoupled from the disk write).
+type subscriber struct {
+	conn net.Conn
+	ch   chan []byte
+	done chan struct{} // closed by the drain goroutine when it exits
+}
+
 type session struct {
 	mu   sync.Mutex
 	f    *os.File  // underlying file, for sync/close
 	enc  io.Writer // encrypting writer over f; recorded bytes land as ciphertext
-	subs map[net.Conn]struct{}
+	subs map[net.Conn]*subscriber
 	done bool
 }
 
+// write persists b to disk synchronously and in order, then fans b out to every
+// live tailer via a NON-BLOCKING send of a private copy. The caller may reuse b
+// after write returns, so the copy is mandatory. A tailer whose channel is full
+// (lagging) is dropped rather than blocking the recorder or peer tailers.
 func (s *session) write(b []byte) error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if s.enc != nil {
 		if _, err := s.enc.Write(b); err != nil { // encrypted to disk
+			s.mu.Unlock()
 			return err
 		}
 	}
-	for c := range s.subs {
-		_ = c.SetWriteDeadline(time.Now().Add(2 * time.Second))
-		if _, err := c.Write(b); err != nil {
+	if len(s.subs) == 0 {
+		s.mu.Unlock()
+		return nil
+	}
+	// Copy once; the same immutable slice is safe to share across subscribers.
+	cp := make([]byte, len(b))
+	copy(cp, b)
+	var dropped []*subscriber
+	for c, sub := range s.subs {
+		select {
+		case sub.ch <- cp:
+		default:
+			// Lagging tailer: drop it instead of blocking the disk write path.
 			delete(s.subs, c)
-			_ = c.Close()
+			close(sub.ch)
+			dropped = append(dropped, sub)
 		}
 	}
+	s.mu.Unlock()
+	// Close dropped conns outside the lock so we never hold s.mu across a conn
+	// op. Closing the conn also unblocks a drain goroutine stuck in conn.Write
+	// (a stalled tailer) so its fd/goroutine don't leak until session close.
+	for _, sub := range dropped {
+		_ = sub.conn.Close()
+	}
 	return nil
+}
+
+// subscribe registers c as a live tailer and starts its drain goroutine. The
+// caller must hold no lock. If the session is already done, c is closed.
+func (s *session) subscribe(c net.Conn) {
+	s.mu.Lock()
+	if s.done {
+		s.mu.Unlock()
+		_ = c.Close()
+		return
+	}
+	sub := &subscriber{conn: c, ch: make(chan []byte, subChanCap), done: make(chan struct{})}
+	s.subs[c] = sub
+	s.mu.Unlock()
+	go sub.drain()
+}
+
+// drain writes queued chunks to the subscriber's conn until the channel is
+// closed (lagging drop or session close) or a conn write fails.
+func (sub *subscriber) drain() {
+	defer close(sub.done)
+	for b := range sub.ch {
+		if _, err := sub.conn.Write(b); err != nil {
+			// Conn is dead; keep draining so close()/write() don't block on the
+			// channel, but stop writing.
+			for range sub.ch {
+			}
+			return
+		}
+	}
 }
 
 func (s *session) addTailer(c net.Conn, path string) {
@@ -83,18 +150,11 @@ func (s *session) addTailer(c net.Conn, path string) {
 			return
 		}
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.done {
-		_ = c.Close()
-		return
-	}
-	s.subs[c] = struct{}{}
+	s.subscribe(c)
 }
 
 func (s *session) close() error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.done = true
 	var err error
 	if s.f != nil {
@@ -106,9 +166,18 @@ func (s *session) close() error {
 		}
 		s.f = nil
 	}
-	for c := range s.subs {
-		_ = c.Close()
+	subs := make([]*subscriber, 0, len(s.subs))
+	for c, sub := range s.subs {
+		subs = append(subs, sub)
 		delete(s.subs, c)
+		close(sub.ch) // stop the drain goroutine
+	}
+	s.mu.Unlock()
+	// Close conns and wait for drain goroutines outside the lock so a slow conn
+	// can't hold s.mu (which the recorder needs).
+	for _, sub := range subs {
+		_ = sub.conn.Close()
+		<-sub.done
 	}
 	return err
 }
@@ -117,7 +186,8 @@ type registry struct {
 	mu        sync.RWMutex // RWMutex: concurrent reads (tail) don't block each other
 	live      map[string]sessionRef
 	key       []byte         // at-rest encryption key
-	connCount map[uint32]int // per-UID connection cap
+	connCount map[uint32]int // per-UID connection count
+	cap       int            // per-UID concurrent session cap; updatable on SIGHUP
 }
 
 type sessionRef struct {
@@ -144,9 +214,40 @@ func (r *registry) get(id string) (sessionRef, bool) {
 	return ref, ok
 }
 
+// reserve atomically claims a session slot for uid if it is under the cap,
+// returning false (and reserving nothing) when the cap is reached.
+func (r *registry) reserve(uid uint32) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.connCount[uid] >= r.cap {
+		return false
+	}
+	r.connCount[uid]++
+	return true
+}
+
+// release returns a previously reserved slot for uid.
+func (r *registry) release(uid uint32) {
+	r.mu.Lock()
+	r.connCount[uid]--
+	r.mu.Unlock()
+}
+
+// setCap updates the per-UID session cap under the lock. It is called from the
+// SIGHUP handler so an edited config takes effect without a daemon restart.
+func (r *registry) setCap(c int) {
+	r.mu.Lock()
+	r.cap = c
+	r.mu.Unlock()
+}
+
 // Run starts the daemon: ingests stray user-local recordings, then serves the
-// unix socket until ctx is cancelled or the process is terminated.
-func Run(ctx context.Context, socketPath string) error {
+// unix socket until ctx is cancelled or the process is terminated. cfg supplies
+// the initial socket path and per-UID session cap. reload, if non-nil, delivers
+// freshly-parsed configs (e.g. from a SIGHUP handler); each one re-applies the
+// safely-reloadable fields (log level, session cap) without a restart.
+func Run(ctx context.Context, cfg *config.Config, reload <-chan *config.Config) error {
+	socketPath := cfg.SocketPath
 	if err := os.MkdirAll(store.CentralDir(), 0o700); err != nil {
 		return fmt.Errorf("create central dir: %w", err)
 	}
@@ -181,8 +282,31 @@ func Run(ctx context.Context, socketPath string) error {
 		ln.Close()
 	}()
 
-	reg := &registry{live: map[string]sessionRef{}, key: key, connCount: map[uint32]int{}}
+	reg := &registry{live: map[string]sessionRef{}, key: key, connCount: map[uint32]int{}, cap: cfg.SessionCap}
 	logger.Infof("ttrackd: listening on %s, storing in %s (encrypted)", socketPath, store.CentralDir())
+
+	// Apply hot-reloadable config on SIGHUP-delivered configs. socket_path and
+	// central_dir cannot change at runtime — they require a restart.
+	if reload != nil {
+		go func() {
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case nc, ok := <-reload:
+					if !ok {
+						return
+					}
+					logger.Set(logger.Level(nc.LogLevel))
+					reg.setCap(nc.SessionCap)
+					logger.Infof("ttrackd: config reloaded (SIGHUP): log_level=%d session_cap=%d", nc.LogLevel, nc.SessionCap)
+					if nc.SocketPath != socketPath || nc.CentralDir != store.CentralDir() {
+						logger.Infof("ttrackd: socket_path / central_dir changes require a restart to take effect")
+					}
+				}
+			}
+		}()
+	}
 
 	for {
 		conn, err := ln.Accept()
@@ -248,19 +372,11 @@ func handle(conn *net.UnixConn, reg *registry) {
 }
 
 func handleRec(conn *net.UnixConn, br *bufio.Reader, cred *unix.Ucred, reg *registry) {
-	reg.mu.Lock()
-	if reg.connCount[cred.Uid] >= 10 {
-		reg.mu.Unlock()
+	if !reg.reserve(cred.Uid) {
 		_, _ = conn.Write([]byte("ERR too many sessions\n"))
 		return
 	}
-	reg.connCount[cred.Uid]++
-	reg.mu.Unlock()
-	defer func() {
-		reg.mu.Lock()
-		reg.connCount[cred.Uid]--
-		reg.mu.Unlock()
-	}()
+	defer reg.release(cred.Uid)
 
 	uname := lookupUser(cred.Uid)
 	dir := filepath.Join(store.CentralDir(), uname)
@@ -283,7 +399,7 @@ func handleRec(conn *net.UnixConn, br *bufio.Reader, cred *unix.Ucred, reg *regi
 		return
 	}
 
-	sess := &session{f: f, enc: enc, subs: map[net.Conn]struct{}{}}
+	sess := &session{f: f, enc: enc, subs: map[net.Conn]*subscriber{}}
 	reg.add(id, sess, path)
 	logger.Infof("ttrackd: session started  user=%-20s id=%s", uname, id)
 	var totalBytes int64
@@ -521,7 +637,14 @@ func ingestLocalRecordings(key []byte) {
 	}
 }
 
+// homeDirs returns the set of home directories to sweep for stray local
+// recordings. It enumerates real accounts from /etc/passwd (covering LDAP/SSSD
+// homes under /var/home, service accounts, etc.) and always includes /root.
+// If /etc/passwd can't be read it falls back to the old /root + /home/* scan.
 func homeDirs() []string {
+	if content, err := os.ReadFile("/etc/passwd"); err == nil {
+		return homeDirsFromPasswd(content)
+	}
 	homes := []string{"/root"}
 	if entries, err := os.ReadDir("/home"); err == nil {
 		for _, e := range entries {
@@ -529,6 +652,34 @@ func homeDirs() []string {
 				homes = append(homes, filepath.Join("/home", e.Name()))
 			}
 		}
+	}
+	return homes
+}
+
+// homeDirsFromPasswd extracts the absolute home directories (field 6) from
+// /etc/passwd content. /root is always included; results are deduped and
+// malformed/relative entries are skipped. It is pure so it can be unit-tested.
+func homeDirsFromPasswd(content []byte) []string {
+	seen := map[string]struct{}{"/root": {}}
+	homes := []string{"/root"}
+	for _, line := range strings.Split(string(content), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		fields := strings.Split(line, ":")
+		if len(fields) < 7 {
+			continue
+		}
+		home := fields[5]
+		if !strings.HasPrefix(home, "/") {
+			continue
+		}
+		if _, ok := seen[home]; ok {
+			continue
+		}
+		seen[home] = struct{}{}
+		homes = append(homes, home)
 	}
 	return homes
 }
@@ -555,10 +706,20 @@ func ingestHome(home string, key []byte) {
 	}
 }
 
+// copyFileAfterCopy is a test hook fired after the bytes are copied but before
+// the post-copy re-check, used to simulate the source changing mid-copy. nil in
+// production.
+var copyFileAfterCopy func()
+
 // copyFile copies a user-owned plaintext source into the root-only central
 // store, encrypting it. The source is opened O_NOFOLLOW and verified to be a
 // regular file, so a user cannot symlink a recording at a root-readable target
 // (e.g. /etc/shadow) and have the root daemon copy it into the central store.
+//
+// To avoid capturing a truncated in-progress recording, copyFile snapshots the
+// source size up front and re-checks after copying: if the recording became
+// active again or its size changed, the partial destination is removed and an
+// error is returned so the caller leaves the source for a later run.
 func copyFile(src, dst string, key []byte) (retErr error) {
 	in, err := os.OpenFile(src, os.O_RDONLY|unix.O_NOFOLLOW, 0)
 	if err != nil {
@@ -572,13 +733,19 @@ func copyFile(src, dst string, key []byte) (retErr error) {
 	if !fi.Mode().IsRegular() {
 		return fmt.Errorf("ingest: %s is not a regular file", src)
 	}
+	startSize := fi.Size()
 	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 	if err != nil {
 		return err
 	}
+	// On any error, the partial destination must not be left behind.
 	defer func() {
-		if err := out.Close(); retErr == nil && err != nil {
-			retErr = err
+		closeErr := out.Close()
+		if retErr == nil && closeErr != nil {
+			retErr = closeErr
+		}
+		if retErr != nil {
+			_ = os.Remove(dst)
 		}
 	}()
 	enc, err := crypto.NewWriter(out, key)
@@ -587,6 +754,22 @@ func copyFile(src, dst string, key []byte) (retErr error) {
 	}
 	if _, err := io.Copy(enc, in); err != nil {
 		return err
+	}
+	if copyFileAfterCopy != nil {
+		copyFileAfterCopy()
+	}
+	// Re-check: a recording that became active again, or whose size changed
+	// during the copy, may have been captured truncated — skip it this run.
+	if store.IsActive(filepath.Base(src)) {
+		return fmt.Errorf("ingest: %s became active during copy — skipping", src)
+	}
+	cur, err := in.Stat()
+	if err != nil {
+		return err
+	}
+	if cur.Size() != startSize {
+		return fmt.Errorf("ingest: %s size changed during copy (%d -> %d) — skipping",
+			src, startSize, cur.Size())
 	}
 	return out.Sync()
 }

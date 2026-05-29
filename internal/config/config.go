@@ -40,6 +40,10 @@ type Config struct {
 	LogLevel int
 	// LogFile is the daemon log file path. Empty disables file logging.
 	LogFile string
+	// SessionCap is the maximum number of concurrent recording sessions the
+	// daemon accepts per UID. Guards against a single user exhausting the
+	// daemon's file descriptors / goroutines.
+	SessionCap int
 }
 
 // defaults returns a Config populated with factory defaults.
@@ -54,6 +58,7 @@ func defaults() Config {
 		ScrollBuffer:     32 * 1024,
 		LogLevel:         3,
 		LogFile:          "/var/log/ttrack/ttrack.log",
+		SessionCap:       10,
 	}
 }
 
@@ -79,16 +84,25 @@ var (
 // DefaultPath. A missing or unreadable file is silently ignored (defaults used).
 func Load() *Config {
 	once.Do(func() {
-		cfg := defaults()
-		path := os.Getenv("TTRACK_CONFIG")
-		if path == "" {
-			path = DefaultPath
-		}
-		_ = parseFile(path, &cfg)
-		applyEnv(&cfg)
-		global = &cfg
+		cfg := Parse()
+		global = cfg
 	})
 	return global
+}
+
+// Parse reads config from the current environment + config file and returns a
+// freshly-allocated *Config every call. Unlike Load it does not cache and never
+// touches the Load() singleton, so the daemon can call it on SIGHUP to pick up
+// edited values without racing goroutines that already hold the Load() pointer.
+func Parse() *Config {
+	cfg := defaults()
+	path := os.Getenv("TTRACK_CONFIG")
+	if path == "" {
+		path = DefaultPath
+	}
+	_ = parseFile(path, &cfg)
+	applyEnv(&cfg)
+	return &cfg
 }
 
 // Reset clears the singleton so the next Load() re-reads the config. Intended
@@ -164,6 +178,10 @@ func applyKey(cfg *Config, k, v string) {
 		}
 	case "log_file":
 		cfg.LogFile = v
+	case "session_cap":
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.SessionCap = n
+		}
 	}
 }
 
@@ -206,5 +224,10 @@ func applyEnv(cfg *Config) {
 	}
 	if v := os.Getenv("TTRACK_LOG_FILE"); v != "" {
 		cfg.LogFile = v
+	}
+	if v := os.Getenv("TTRACK_SESSION_CAP"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.SessionCap = n
+		}
 	}
 }
