@@ -44,6 +44,15 @@ type Config struct {
 	// daemon accepts per UID. Guards against a single user exhausting the
 	// daemon's file descriptors / goroutines.
 	SessionCap int
+	// BackupType is the backup mechanism: "bucket_aws", "bucket_gcp", "rsync",
+	// or "" (disabled). Invalid values silently fall back to "" (disabled).
+	BackupType string
+	// BackupTarget is the destination: s3://bucket/prefix, gs://bucket/prefix,
+	// or user@host:/path. Empty disables backup even when BackupType is set.
+	BackupTarget string
+	// BackupIntervalSec is the interval between automatic backups in seconds.
+	// 0 disables periodic backup. Negative values are silently ignored (0 kept).
+	BackupIntervalSec int
 }
 
 // defaults returns a Config populated with factory defaults.
@@ -182,6 +191,17 @@ func applyKey(cfg *Config, k, v string) {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			cfg.SessionCap = n
 		}
+	case "backup_type":
+		switch v {
+		case "bucket_aws", "bucket_gcp", "rsync", "":
+			cfg.BackupType = v
+		}
+	case "backup_target":
+		cfg.BackupTarget = v
+	case "backup_interval_sec":
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			cfg.BackupIntervalSec = n
+		}
 	}
 }
 
@@ -228,6 +248,20 @@ func applyEnv(cfg *Config) {
 	if v := os.Getenv("TTRACK_SESSION_CAP"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			cfg.SessionCap = n
+		}
+	}
+	if v := os.Getenv("TTRACK_BACKUP_TYPE"); v != "" {
+		switch v {
+		case "bucket_aws", "bucket_gcp", "rsync":
+			cfg.BackupType = v
+		}
+	}
+	if v := os.Getenv("TTRACK_BACKUP_TARGET"); v != "" {
+		cfg.BackupTarget = v
+	}
+	if v := os.Getenv("TTRACK_BACKUP_INTERVAL_SEC"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			cfg.BackupIntervalSec = n
 		}
 	}
 }

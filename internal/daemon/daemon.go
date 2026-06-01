@@ -26,6 +26,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
+	"ttrack/internal/backup"
 	"ttrack/internal/config"
 	"ttrack/internal/crypto"
 	"ttrack/internal/logger"
@@ -241,6 +242,14 @@ func (r *registry) setCap(c int) {
 	r.mu.Unlock()
 }
 
+// backupConfigChanged reports whether any backup-relevant field differs.
+// Pure helper — no I/O — so it can be unit-tested without goroutines.
+func backupConfigChanged(prev, nc *config.Config) bool {
+	return prev.BackupType != nc.BackupType ||
+		prev.BackupTarget != nc.BackupTarget ||
+		prev.BackupIntervalSec != nc.BackupIntervalSec
+}
+
 // Run starts the daemon: ingests stray user-local recordings, then serves the
 // unix socket until ctx is cancelled or the process is terminated. cfg supplies
 // the initial socket path and per-UID session cap. reload, if non-nil, delivers
@@ -275,6 +284,8 @@ func Run(ctx context.Context, cfg *config.Config, reload <-chan *config.Config) 
 	// Start ingest after the socket is ready so connections aren't dropped
 	// while a large spool is being processed.
 	go ingestLocalRecordings(key)
+	backupCfgCh := make(chan *config.Config, 1)
+	go backupLoop(ctx, cfg, backupCfgCh, backup.Run)
 
 	// Close the listener when the context is cancelled so Accept() unblocks.
 	go func() {
@@ -289,6 +300,9 @@ func Run(ctx context.Context, cfg *config.Config, reload <-chan *config.Config) 
 	// central_dir cannot change at runtime — they require a restart.
 	if reload != nil {
 		go func() {
+			prevBackupType := cfg.BackupType
+			prevBackupTarget := cfg.BackupTarget
+			prevBackupIntervalSec := cfg.BackupIntervalSec
 			for {
 				select {
 				case <-ctx.Done():
@@ -302,6 +316,21 @@ func Run(ctx context.Context, cfg *config.Config, reload <-chan *config.Config) 
 					logger.Infof("ttrackd: config reloaded (SIGHUP): log_level=%d session_cap=%d", nc.LogLevel, nc.SessionCap)
 					if nc.SocketPath != socketPath || nc.CentralDir != store.CentralDir() {
 						logger.Infof("ttrackd: socket_path / central_dir changes require a restart to take effect")
+					}
+					if backupConfigChanged(
+						&config.Config{BackupType: prevBackupType, BackupTarget: prevBackupTarget, BackupIntervalSec: prevBackupIntervalSec},
+						nc,
+					) {
+						select {
+						case backupCfgCh <- nc:
+						default:
+							// A reload is already queued; the latest config will be received on next tick.
+						}
+						prevBackupType = nc.BackupType
+						prevBackupTarget = nc.BackupTarget
+						prevBackupIntervalSec = nc.BackupIntervalSec
+						logger.Infof("ttrackd: backup config reloaded (type=%s target=%s interval=%ds)",
+							nc.BackupType, nc.BackupTarget, nc.BackupIntervalSec)
 					}
 				}
 			}
@@ -710,6 +739,61 @@ func ingestHome(home string, key []byte) {
 // the post-copy re-check, used to simulate the source changing mid-copy. nil in
 // production.
 var copyFileAfterCopy func()
+
+// backupTickUnit is multiplied by BackupIntervalSec to produce the ticker
+// interval. Tests override this to time.Millisecond for fast ticks.
+var backupTickUnit = time.Second
+
+// backupLoop runs the periodic backup goroutine. A nil tickC (when backup is
+// disabled) is never selected, so the loop parks cheaply on ctx.Done() and
+// updates only. Reload via the updates channel resets the ticker.
+func backupLoop(
+	ctx context.Context,
+	initial *config.Config,
+	updates <-chan *config.Config,
+	runFn func(*config.Config) error,
+) {
+	cur := initial
+	var ticker *time.Ticker
+	var tickC <-chan time.Time
+
+	resetTicker := func(cfg *config.Config) {
+		if ticker != nil {
+			ticker.Stop()
+			ticker = nil
+			tickC = nil
+		}
+		if cfg.BackupIntervalSec > 0 && cfg.BackupType != "" {
+			ticker = time.NewTicker(time.Duration(cfg.BackupIntervalSec) * backupTickUnit)
+			tickC = ticker.C
+		}
+	}
+	resetTicker(cur)
+	defer func() {
+		if ticker != nil {
+			ticker.Stop()
+		}
+	}()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case nc, ok := <-updates:
+			if !ok {
+				return
+			}
+			cur = nc
+			resetTicker(cur)
+		case <-tickC:
+			if err := runFn(cur); err != nil {
+				logger.Errorf("ttrackd: backup failed: %v", err)
+			} else {
+				logger.Infof("ttrackd: backup completed (type=%s target=%s)", cur.BackupType, cur.BackupTarget)
+			}
+		}
+	}
+}
 
 // copyFile copies a user-owned plaintext source into the root-only central
 // store, encrypting it. The source is opened O_NOFOLLOW and verified to be a

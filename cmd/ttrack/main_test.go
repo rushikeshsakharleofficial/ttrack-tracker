@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestLastNonFlagArg(t *testing.T) {
 	tests := []struct {
@@ -52,5 +55,20 @@ func TestParseLsScope(t *testing.T) {
 					tt.args, gotAll, gotUser, tt.wantAll, tt.wantUser)
 			}
 		})
+	}
+}
+
+func TestCommandHelpBackup(t *testing.T) {
+	h, ok := commandHelp("backup")
+	if !ok {
+		t.Fatal(`commandHelp("backup") returned ok=false; case is missing from switch`)
+	}
+	if h == "" {
+		t.Error(`commandHelp("backup") returned empty help text`)
+	}
+	for _, term := range []string{"backup", "backup_type", "backup_target"} {
+		if !strings.Contains(h, term) {
+			t.Errorf("help text missing %q", term)
+		}
 	}
 }

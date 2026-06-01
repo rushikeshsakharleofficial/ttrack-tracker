@@ -8,6 +8,7 @@ import (
 	"ttrack/internal/ansible"
 	"ttrack/internal/audit"
 	"ttrack/internal/auth"
+	"ttrack/internal/backup"
 	"ttrack/internal/complete"
 	"ttrack/internal/config"
 	"ttrack/internal/initcmd"
@@ -149,6 +150,8 @@ func main() {
 	case "ansible-ingest":
 		// Hidden: called by the Ansible callback plugin subprocess.
 		err = ansible.Ingest(rest)
+	case "backup":
+		err = backup.RunCLI(rest)
 	case "completion":
 		err = complete.Script(rest)
 	case "__complete":
@@ -214,6 +217,7 @@ audit commands (central root-only store):
   ttrack search [opts] <string>           find a string across recordings (root)
   ttrack export [-o file] <id>            decrypt a session to a plaintext cast (root)
   ttrack prune                            interactively delete recordings (root)
+  ttrack backup                           run configured backup immediately (root)
   ttrack ansible list [--user U]          list Ansible playbook runs (root)
   ttrack ansible show <runid>             show tasks and recap for a run (root)
 
@@ -379,6 +383,26 @@ usage: ttrack completion bash
 Install:
   ttrack completion bash | sudo tee /usr/share/bash-completion/completions/ttrack
 `, true
+	case "backup":
+		return `ttrack backup — run a configured backup immediately (root)
+
+usage: ttrack backup
+
+Triggers a one-shot backup of the central recording store to the configured
+target. Respects the same backup_type and backup_target settings used by the
+daemon's periodic backup.
+
+Backup types:
+  bucket_aws   shells out to: aws s3 sync <central_dir> <backup_target>
+  bucket_gcp   shells out to: gsutil -m rsync -r <central_dir> <backup_target>
+  rsync        shells out to: rsync -a --delete <central_dir>/ <backup_target>
+
+Configure in /etc/ttrack/ttrack.conf:
+  backup_type   = bucket_aws | bucket_gcp | rsync
+  backup_target = s3://bucket/prefix | gs://bucket/prefix | user@host:/path
+
+Access is enforced by filesystem permissions (central_dir is root:root 0700).
+`, true
 	}
 	return "", false
 }
@@ -415,6 +439,9 @@ func runConfigCheck() int {
 	fmt.Printf("%-22s = %d\n", "scroll_buffer", cfg.ScrollBuffer)
 	fmt.Printf("%-22s = %d  (0=off 1=error 2=warn 3=info 4=debug 5=trace)\n", "log_level", cfg.LogLevel)
 	fmt.Printf("%-22s = %s\n", "log_file", cfg.LogFile)
+	fmt.Printf("%-22s = %s\n", "backup_type", cfg.BackupType)
+	fmt.Printf("%-22s = %s\n", "backup_target", cfg.BackupTarget)
+	fmt.Printf("%-22s = %d\n", "backup_interval_sec", cfg.BackupIntervalSec)
 	if auth.IsSet() {
 		fmt.Printf("%-22s = SET\n", "playback_password")
 	} else {
@@ -432,6 +459,9 @@ func runConfigCheck() int {
 		{"TTRACK_SCROLL_BUFFER", os.Getenv("TTRACK_SCROLL_BUFFER")},
 		{"TTRACK_LOG_LEVEL", os.Getenv("TTRACK_LOG_LEVEL")},
 		{"TTRACK_LOG_FILE", os.Getenv("TTRACK_LOG_FILE")},
+		{"TTRACK_BACKUP_TYPE", os.Getenv("TTRACK_BACKUP_TYPE")},
+		{"TTRACK_BACKUP_TARGET", os.Getenv("TTRACK_BACKUP_TARGET")},
+		{"TTRACK_BACKUP_INTERVAL_SEC", os.Getenv("TTRACK_BACKUP_INTERVAL_SEC")},
 	}
 	for _, ov := range overrides {
 		if ov[1] != "" {

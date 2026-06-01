@@ -40,3 +40,16 @@ log_level = 3
 # Daemon log file. Empty disables file logging and leaves logs in journald only.
 # Override: TTRACK_LOG_FILE=<path>
 log_file = /var/log/ttrack/ttrack.log
+
+# Backup type: bucket_aws, bucket_gcp, rsync, or empty (disabled, default).
+# Invalid values silently fall back to "" (disabled).
+# Override: TTRACK_BACKUP_TYPE=<type>
+# backup_type =
+
+# Backup target: s3://bucket/prefix, gs://bucket/prefix, or user@host:/path.
+# Override: TTRACK_BACKUP_TARGET=<target>
+# backup_target =
+
+# Seconds between automatic daemon backups. 0 disables periodic backup (default).
+# Override: TTRACK_BACKUP_INTERVAL_SEC=<n>
+# backup_interval_sec = 0

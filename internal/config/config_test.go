@@ -46,6 +46,15 @@ func TestDefaults(t *testing.T) {
 	if cfg.SessionCap != 10 {
 		t.Errorf("SessionCap = %d, want default 10", cfg.SessionCap)
 	}
+	if cfg.BackupType != "" {
+		t.Errorf("BackupType = %q, want empty (disabled)", cfg.BackupType)
+	}
+	if cfg.BackupTarget != "" {
+		t.Errorf("BackupTarget = %q, want empty", cfg.BackupTarget)
+	}
+	if cfg.BackupIntervalSec != 0 {
+		t.Errorf("BackupIntervalSec = %d, want 0", cfg.BackupIntervalSec)
+	}
 }
 
 func TestSessionCapFromFile(t *testing.T) {
@@ -82,6 +91,132 @@ func TestSessionCapInvalidFallsToDefault(t *testing.T) {
 
 	if cfg := Load(); cfg.SessionCap != 10 {
 		t.Errorf("SessionCap = %d, want default 10 for invalid value", cfg.SessionCap)
+	}
+}
+
+func TestBackupTypeDefault(t *testing.T) {
+	resetForTest(t)
+	t.Setenv("TTRACK_CONFIG", "/nonexistent/ttrack.conf")
+	if cfg := Load(); cfg.BackupType != "" {
+		t.Errorf("BackupType = %q, want empty string (disabled by default)", cfg.BackupType)
+	}
+}
+
+func TestBackupTypeFromFile(t *testing.T) {
+	resetForTest(t)
+	dir := t.TempDir()
+	f := filepath.Join(dir, "ttrack.conf")
+	os.WriteFile(f, []byte("backup_type = bucket_aws\n"), 0o644)
+	t.Setenv("TTRACK_CONFIG", f)
+	if cfg := Load(); cfg.BackupType != "bucket_aws" {
+		t.Errorf("BackupType = %q, want bucket_aws", cfg.BackupType)
+	}
+}
+
+func TestBackupTypeEnvOverrides(t *testing.T) {
+	resetForTest(t)
+	dir := t.TempDir()
+	f := filepath.Join(dir, "ttrack.conf")
+	os.WriteFile(f, []byte("backup_type = rsync\n"), 0o644)
+	t.Setenv("TTRACK_CONFIG", f)
+	t.Setenv("TTRACK_BACKUP_TYPE", "bucket_gcp")
+	if cfg := Load(); cfg.BackupType != "bucket_gcp" {
+		t.Errorf("BackupType = %q, want bucket_gcp (env wins)", cfg.BackupType)
+	}
+}
+
+func TestBackupTypeInvalidFallsToDefault(t *testing.T) {
+	resetForTest(t)
+	dir := t.TempDir()
+	f := filepath.Join(dir, "ttrack.conf")
+	os.WriteFile(f, []byte("backup_type = azure\n"), 0o644)
+	t.Setenv("TTRACK_CONFIG", f)
+	if cfg := Load(); cfg.BackupType != "" {
+		t.Errorf("BackupType = %q, want empty string for invalid type", cfg.BackupType)
+	}
+}
+
+func TestBackupTargetDefault(t *testing.T) {
+	resetForTest(t)
+	t.Setenv("TTRACK_CONFIG", "/nonexistent/ttrack.conf")
+	if cfg := Load(); cfg.BackupTarget != "" {
+		t.Errorf("BackupTarget = %q, want empty string by default", cfg.BackupTarget)
+	}
+}
+
+func TestBackupTargetFromFile(t *testing.T) {
+	resetForTest(t)
+	dir := t.TempDir()
+	f := filepath.Join(dir, "ttrack.conf")
+	os.WriteFile(f, []byte("backup_target = s3://my-bucket/ttrack\n"), 0o644)
+	t.Setenv("TTRACK_CONFIG", f)
+	if cfg := Load(); cfg.BackupTarget != "s3://my-bucket/ttrack" {
+		t.Errorf("BackupTarget = %q, want s3://my-bucket/ttrack", cfg.BackupTarget)
+	}
+}
+
+func TestBackupTargetEnvOverrides(t *testing.T) {
+	resetForTest(t)
+	dir := t.TempDir()
+	f := filepath.Join(dir, "ttrack.conf")
+	os.WriteFile(f, []byte("backup_target = s3://from-file\n"), 0o644)
+	t.Setenv("TTRACK_CONFIG", f)
+	t.Setenv("TTRACK_BACKUP_TARGET", "gs://from-env/prefix")
+	if cfg := Load(); cfg.BackupTarget != "gs://from-env/prefix" {
+		t.Errorf("BackupTarget = %q, want gs://from-env/prefix (env wins)", cfg.BackupTarget)
+	}
+}
+
+func TestBackupIntervalSecDefault(t *testing.T) {
+	resetForTest(t)
+	t.Setenv("TTRACK_CONFIG", "/nonexistent/ttrack.conf")
+	if cfg := Load(); cfg.BackupIntervalSec != 0 {
+		t.Errorf("BackupIntervalSec = %d, want 0 (disabled by default)", cfg.BackupIntervalSec)
+	}
+}
+
+func TestBackupIntervalSecFromFile(t *testing.T) {
+	resetForTest(t)
+	dir := t.TempDir()
+	f := filepath.Join(dir, "ttrack.conf")
+	os.WriteFile(f, []byte("backup_interval_sec = 3600\n"), 0o644)
+	t.Setenv("TTRACK_CONFIG", f)
+	if cfg := Load(); cfg.BackupIntervalSec != 3600 {
+		t.Errorf("BackupIntervalSec = %d, want 3600", cfg.BackupIntervalSec)
+	}
+}
+
+func TestBackupIntervalSecEnvOverrides(t *testing.T) {
+	resetForTest(t)
+	dir := t.TempDir()
+	f := filepath.Join(dir, "ttrack.conf")
+	os.WriteFile(f, []byte("backup_interval_sec = 3600\n"), 0o644)
+	t.Setenv("TTRACK_CONFIG", f)
+	t.Setenv("TTRACK_BACKUP_INTERVAL_SEC", "900")
+	if cfg := Load(); cfg.BackupIntervalSec != 900 {
+		t.Errorf("BackupIntervalSec = %d, want 900 (env wins)", cfg.BackupIntervalSec)
+	}
+}
+
+func TestBackupIntervalSecInvalidFallsToDefault(t *testing.T) {
+	resetForTest(t)
+	dir := t.TempDir()
+	f := filepath.Join(dir, "ttrack.conf")
+	os.WriteFile(f, []byte("backup_interval_sec = -5\n"), 0o644)
+	t.Setenv("TTRACK_CONFIG", f)
+	if cfg := Load(); cfg.BackupIntervalSec != 0 {
+		t.Errorf("BackupIntervalSec = %d, want 0 for negative value", cfg.BackupIntervalSec)
+	}
+}
+
+func TestBackupIntervalSecZeroAllowed(t *testing.T) {
+	resetForTest(t)
+	dir := t.TempDir()
+	f := filepath.Join(dir, "ttrack.conf")
+	os.WriteFile(f, []byte("backup_interval_sec = 0\n"), 0o644)
+	t.Setenv("TTRACK_CONFIG", f)
+	if cfg := Load(); cfg.BackupIntervalSec != 0 {
+		t.Errorf("BackupIntervalSec = %d, want 0 (explicit disable)", cfg.BackupIntervalSec)
 	}
 }
 
