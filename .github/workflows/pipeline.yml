@@ -210,7 +210,6 @@ jobs:
 
       - name: SonarQube
         if: github.ref == 'refs/heads/main'
-        continue-on-error: true
         uses: SonarSource/sonarqube-scan-action@v6
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -219,6 +218,7 @@ jobs:
           args: >
             -Dsonar.projectKey=ttrack
             -Dsonar.projectName=ttrack
+            -Dsonar.organization=rushikeshsakharleofficial
             -Dsonar.sources=.
             -Dsonar.exclusions=build/**,bin/**,vendor/**,*.pb.go,.gopath/**,.gocache/**
             -Dsonar.go.coverage.reportPaths=coverage.out
