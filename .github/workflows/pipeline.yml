@@ -252,12 +252,12 @@ jobs:
             'CUR_VER=$(dpkg -s ttrack 2>/dev/null | sed -n "s/^Version: //p")' \
             'if [ -z "$CUR_VER" ]; then' \
             '    echo "installing ttrack $NEW_VER (fresh)"' \
-            '    sudo dpkg -i "$DEB" && sudo rm -f /usr/local/man/man1/ttrack.1 && echo installed' \
+            '    sudo DEBIAN_FRONTEND=noninteractive dpkg -i --force-confold "$DEB" && sudo rm -f /usr/local/man/man1/ttrack.1 && echo installed' \
             'elif [ "$CUR_VER" = "$NEW_VER" ]; then' \
             '    echo "ttrack $CUR_VER already up to date -- skipping"' \
             'else' \
             '    echo "updating ttrack $CUR_VER -> $NEW_VER"' \
-            '    sudo dpkg -i "$DEB" && sudo rm -f /usr/local/man/man1/ttrack.1 && echo updated' \
+            '    sudo DEBIAN_FRONTEND=noninteractive dpkg -i --force-confold "$DEB" && sudo rm -f /usr/local/man/man1/ttrack.1 && echo updated' \
             'fi' > /tmp/ttrack-deploy.sh
 
           scp -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no \
