@@ -41,15 +41,34 @@ log_level = 3
 # Override: TTRACK_LOG_FILE=<path>
 log_file = /var/log/ttrack/ttrack.log
 
-# Backup type: bucket_aws, bucket_gcp, rsync, or empty (disabled, default).
-# Invalid values silently fall back to "" (disabled).
-# Override: TTRACK_BACKUP_TYPE=<type>
-# backup_type =
+# ── Backup (all three keys required together; all disabled by default) ────────
+#
+# Mechanism: bucket_aws | bucket_gcp | rsync | (empty = disabled)
+# Invalid backup_type silently falls back to "" (disabled).
+# Env overrides: TTRACK_BACKUP_TYPE, TTRACK_BACKUP_TARGET, TTRACK_BACKUP_INTERVAL_SEC
+#
+# Uncomment ONE block below to enable backup.
 
-# Backup target: s3://bucket/prefix, gs://bucket/prefix, or user@host:/path.
-# Override: TTRACK_BACKUP_TARGET=<target>
-# backup_target =
+# -- AWS S3 ------------------------------------------------------------------
+# Requires: aws CLI installed + credentials configured (IAM role, ~/.aws, or env vars).
+# Command run: aws s3 sync <central_dir> <backup_target>
+#
+# backup_type         = bucket_aws
+# backup_target       = s3://my-company-ttrack/recordings
+# backup_interval_sec = 3600
 
-# Seconds between automatic daemon backups. 0 disables periodic backup (default).
-# Override: TTRACK_BACKUP_INTERVAL_SEC=<n>
-# backup_interval_sec = 0
+# -- GCP Cloud Storage -------------------------------------------------------
+# Requires: gsutil CLI installed + credentials configured (ADC or service account).
+# Command run: gsutil -m rsync -r <central_dir> <backup_target>
+#
+# backup_type         = bucket_gcp
+# backup_target       = gs://my-company-ttrack/recordings
+# backup_interval_sec = 3600
+
+# -- rsync -------------------------------------------------------------------
+# Requires: rsync installed + passwordless SSH from root to backup host.
+# Command run: rsync -a --delete <central_dir>/ <backup_target>
+#
+# backup_type         = rsync
+# backup_target       = backup-user@backup.internal:/var/backups/ttrack
+# backup_interval_sec = 1800
