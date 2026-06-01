@@ -8,6 +8,7 @@ import (
 	"ttrack/internal/ansible"
 	"ttrack/internal/audit"
 	"ttrack/internal/auth"
+	"ttrack/internal/backup"
 	"ttrack/internal/complete"
 	"ttrack/internal/config"
 	"ttrack/internal/initcmd"
@@ -149,6 +150,8 @@ func main() {
 	case "ansible-ingest":
 		// Hidden: called by the Ansible callback plugin subprocess.
 		err = ansible.Ingest(rest)
+	case "backup":
+		err = backup.RunCLI(rest)
 	case "completion":
 		err = complete.Script(rest)
 	case "__complete":
@@ -214,6 +217,7 @@ audit commands (central root-only store):
   ttrack search [opts] <string>           find a string across recordings (root)
   ttrack export [-o file] <id>            decrypt a session to a plaintext cast (root)
   ttrack prune                            interactively delete recordings (root)
+  ttrack backup                           run configured backup immediately (root)
   ttrack ansible list [--user U]          list Ansible playbook runs (root)
   ttrack ansible show <runid>             show tasks and recap for a run (root)
 
@@ -378,6 +382,26 @@ usage: ttrack completion bash
 
 Install:
   ttrack completion bash | sudo tee /usr/share/bash-completion/completions/ttrack
+`, true
+	case "backup":
+		return `ttrack backup — run a configured backup immediately (root)
+
+usage: ttrack backup
+
+Triggers a one-shot backup of the central recording store to the configured
+target. Respects the same backup_type and backup_target settings used by the
+daemon's periodic backup.
+
+Backup types:
+  bucket_aws   shells out to: aws s3 sync <central_dir> <backup_target>
+  bucket_gcp   shells out to: gsutil -m rsync -r <central_dir> <backup_target>
+  rsync        shells out to: rsync -a --delete <central_dir>/ <backup_target>
+
+Configure in /etc/ttrack/ttrack.conf:
+  backup_type   = bucket_aws | bucket_gcp | rsync
+  backup_target = s3://bucket/prefix | gs://bucket/prefix | user@host:/path
+
+Access is enforced by filesystem permissions (central_dir is root:root 0700).
 `, true
 	}
 	return "", false
