@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"net"
 	"os"
@@ -11,6 +12,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"ttrack/internal/config"
 )
 
 // newTestSession builds a session whose disk writes go to an in-memory buffer
@@ -254,6 +257,154 @@ func TestRegistryCapRace(t *testing.T) {
 		}
 	}()
 	wg.Wait()
+}
+
+// --- #5: backupConfigChanged pure helper -----------------------------------
+
+func TestBackupConfigChanged_NoDiff(t *testing.T) {
+	a := &config.Config{BackupType: "rsync", BackupTarget: "host:/b", BackupIntervalSec: 60}
+	b := &config.Config{BackupType: "rsync", BackupTarget: "host:/b", BackupIntervalSec: 60}
+	if backupConfigChanged(a, b) {
+		t.Error("expected no change")
+	}
+}
+
+func TestBackupConfigChanged_TypeChanged(t *testing.T) {
+	a := &config.Config{BackupType: "rsync", BackupTarget: "host:/b", BackupIntervalSec: 60}
+	b := &config.Config{BackupType: "bucket_aws", BackupTarget: "host:/b", BackupIntervalSec: 60}
+	if !backupConfigChanged(a, b) {
+		t.Error("expected change when BackupType differs")
+	}
+}
+
+func TestBackupConfigChanged_TargetChanged(t *testing.T) {
+	a := &config.Config{BackupType: "rsync", BackupTarget: "host:/a", BackupIntervalSec: 60}
+	b := &config.Config{BackupType: "rsync", BackupTarget: "host:/b", BackupIntervalSec: 60}
+	if !backupConfigChanged(a, b) {
+		t.Error("expected change when BackupTarget differs")
+	}
+}
+
+func TestBackupConfigChanged_IntervalChanged(t *testing.T) {
+	a := &config.Config{BackupType: "rsync", BackupTarget: "host:/b", BackupIntervalSec: 60}
+	b := &config.Config{BackupType: "rsync", BackupTarget: "host:/b", BackupIntervalSec: 120}
+	if !backupConfigChanged(a, b) {
+		t.Error("expected change when BackupIntervalSec differs")
+	}
+}
+
+// --- #6: backupLoop goroutine -----------------------------------------------
+
+func TestBackupLoopDisabledDoesNotFire(t *testing.T) {
+	cfg := &config.Config{BackupType: "", BackupTarget: "", BackupIntervalSec: 0}
+	updates := make(chan *config.Config)
+	fired := make(chan struct{}, 1)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	go backupLoop(ctx, cfg, updates, func(c *config.Config) error {
+		fired <- struct{}{}
+		return nil
+	})
+
+	select {
+	case <-ctx.Done():
+		// correct: timeout expired without runFn firing
+	case <-fired:
+		t.Fatal("backupLoop fired runFn when backup was disabled")
+	}
+}
+
+func TestBackupLoopFiresOnTick(t *testing.T) {
+	orig := backupTickUnit
+	backupTickUnit = time.Millisecond
+	defer func() { backupTickUnit = orig }()
+
+	cfg := &config.Config{
+		BackupType:        "rsync",
+		BackupTarget:      "host:/b",
+		BackupIntervalSec: 10,
+	}
+	updates := make(chan *config.Config)
+	fired := make(chan struct{}, 1)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	go backupLoop(ctx, cfg, updates, func(c *config.Config) error {
+		select {
+		case fired <- struct{}{}:
+		default:
+		}
+		return nil
+	})
+
+	select {
+	case <-fired:
+		// correct: fired within timeout
+	case <-ctx.Done():
+		t.Fatal("backupLoop did not fire runFn within timeout")
+	}
+}
+
+func TestBackupLoopReloadResetsTimer(t *testing.T) {
+	orig := backupTickUnit
+	backupTickUnit = time.Millisecond
+	defer func() { backupTickUnit = orig }()
+
+	initial := &config.Config{BackupType: "", BackupIntervalSec: 0}
+	updates := make(chan *config.Config, 1)
+	fired := make(chan struct{}, 1)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	go backupLoop(ctx, initial, updates, func(c *config.Config) error {
+		select {
+		case fired <- struct{}{}:
+		default:
+		}
+		return nil
+	})
+
+	updates <- &config.Config{
+		BackupType:        "rsync",
+		BackupTarget:      "host:/b",
+		BackupIntervalSec: 10,
+	}
+
+	select {
+	case <-fired:
+		// correct: fired after reload enabled it
+	case <-ctx.Done():
+		t.Fatal("backupLoop did not fire after reload enabled backup")
+	}
+}
+
+func TestBackupLoopStopsOnContextCancel(t *testing.T) {
+	orig := backupTickUnit
+	backupTickUnit = time.Millisecond
+	defer func() { backupTickUnit = orig }()
+
+	cfg := &config.Config{BackupType: "rsync", BackupTarget: "host:/b", BackupIntervalSec: 10}
+	updates := make(chan *config.Config)
+	exited := make(chan struct{})
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	go func() {
+		backupLoop(ctx, cfg, updates, func(c *config.Config) error { return nil })
+		close(exited)
+	}()
+
+	cancel()
+	select {
+	case <-exited:
+		// correct: goroutine exited after cancel
+	case <-time.After(time.Second):
+		t.Fatal("backupLoop did not exit after context cancel")
+	}
 }
 
 // --- #3: in-progress local recordings are not ingested truncated -----------
