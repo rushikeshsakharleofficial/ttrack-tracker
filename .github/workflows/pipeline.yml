@@ -219,6 +219,7 @@ jobs:
           args: >
             -Dsonar.projectKey=ttrack
             -Dsonar.projectName=ttrack
+            -Dsonar.organization=rushikeshsakharleofficial
             -Dsonar.sources=.
             -Dsonar.exclusions=build/**,bin/**,vendor/**,*.pb.go,.gopath/**,.gocache/**
             -Dsonar.go.coverage.reportPaths=coverage.out
