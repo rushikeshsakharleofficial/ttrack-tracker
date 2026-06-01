@@ -415,6 +415,9 @@ func runConfigCheck() int {
 	fmt.Printf("%-22s = %d\n", "scroll_buffer", cfg.ScrollBuffer)
 	fmt.Printf("%-22s = %d  (0=off 1=error 2=warn 3=info 4=debug 5=trace)\n", "log_level", cfg.LogLevel)
 	fmt.Printf("%-22s = %s\n", "log_file", cfg.LogFile)
+	fmt.Printf("%-22s = %s\n", "backup_type", cfg.BackupType)
+	fmt.Printf("%-22s = %s\n", "backup_target", cfg.BackupTarget)
+	fmt.Printf("%-22s = %d\n", "backup_interval_sec", cfg.BackupIntervalSec)
 	if auth.IsSet() {
 		fmt.Printf("%-22s = SET\n", "playback_password")
 	} else {
@@ -432,6 +435,9 @@ func runConfigCheck() int {
 		{"TTRACK_SCROLL_BUFFER", os.Getenv("TTRACK_SCROLL_BUFFER")},
 		{"TTRACK_LOG_LEVEL", os.Getenv("TTRACK_LOG_LEVEL")},
 		{"TTRACK_LOG_FILE", os.Getenv("TTRACK_LOG_FILE")},
+		{"TTRACK_BACKUP_TYPE", os.Getenv("TTRACK_BACKUP_TYPE")},
+		{"TTRACK_BACKUP_TARGET", os.Getenv("TTRACK_BACKUP_TARGET")},
+		{"TTRACK_BACKUP_INTERVAL_SEC", os.Getenv("TTRACK_BACKUP_INTERVAL_SEC")},
 	}
 	for _, ov := range overrides {
 		if ov[1] != "" {
