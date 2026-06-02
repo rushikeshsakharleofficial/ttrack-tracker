@@ -250,9 +250,9 @@ func applyEnv(cfg *Config) {
 			cfg.SessionCap = n
 		}
 	}
-	if v := os.Getenv("TTRACK_BACKUP_TYPE"); v != "" {
+	if v, ok := os.LookupEnv("TTRACK_BACKUP_TYPE"); ok {
 		switch v {
-		case "bucket_aws", "bucket_gcp", "rsync":
+		case "bucket_aws", "bucket_gcp", "rsync", "":
 			cfg.BackupType = v
 		}
 	}

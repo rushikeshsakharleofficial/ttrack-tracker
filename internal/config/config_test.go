@@ -361,3 +361,22 @@ func TestSingleton(t *testing.T) {
 		t.Error("Load() returned different pointers — singleton broken")
 	}
 }
+
+func TestBackupTypeEnvClearsFileValue(t *testing.T) {
+	resetForTest(t)
+	f, err := os.CreateTemp("", "ttrack-cfg-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(f.Name())
+	if _, err := f.WriteString("backup_type = bucket_aws\n"); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+	t.Setenv("TTRACK_CONFIG", f.Name())
+	t.Setenv("TTRACK_BACKUP_TYPE", "") // explicit empty — should disable
+	cfg := Parse()
+	if cfg.BackupType != "" {
+		t.Errorf("BackupType = %q, want empty (disabled)", cfg.BackupType)
+	}
+}
