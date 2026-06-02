@@ -737,7 +737,7 @@ func backupLoop(
 	ctx context.Context,
 	initial *config.Config,
 	updates <-chan *config.Config,
-	runFn func(*config.Config) error,
+	runFn func(context.Context, *config.Config) error,
 ) {
 	cur := initial
 	var ticker *time.Ticker
@@ -772,7 +772,7 @@ func backupLoop(
 			cur = nc
 			resetTicker(cur)
 		case <-tickC:
-			if err := runFn(cur); err != nil {
+			if err := runFn(ctx, cur); err != nil {
 				logger.Errorf("ttrackd: backup failed: %v", err)
 			} else {
 				logger.Infof("ttrackd: backup completed (type=%s target=%s)", cur.BackupType, cur.BackupTarget)

@@ -1,6 +1,7 @@
 package backup
 
 import (
+	"context"
 	"errors"
 	"reflect"
 	"testing"
@@ -87,7 +88,7 @@ func TestRunInvokesCorrectCommand(t *testing.T) {
 	var gotName string
 	var gotArgs []string
 	orig := runCommand
-	runCommand = func(name string, args ...string) error {
+	runCommand = func(_ context.Context, name string, args ...string) error {
 		gotName = name
 		gotArgs = args
 		return nil
@@ -99,7 +100,7 @@ func TestRunInvokesCorrectCommand(t *testing.T) {
 		BackupTarget: "user@host:/backup",
 		CentralDir:   "/var/lib/ttrack",
 	}
-	if err := Run(cfg); err != nil {
+	if err := Run(context.Background(), cfg); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 	if gotName != "rsync" {
@@ -113,14 +114,14 @@ func TestRunInvokesCorrectCommand(t *testing.T) {
 
 func TestRunDisabledReturnsError(t *testing.T) {
 	cfg := &config.Config{BackupType: "", CentralDir: "/var/lib/ttrack"}
-	if err := Run(cfg); err == nil {
+	if err := Run(context.Background(), cfg); err == nil {
 		t.Fatal("expected error for disabled backup, got nil")
 	}
 }
 
 func TestRunCommandFailurePropagates(t *testing.T) {
 	orig := runCommand
-	runCommand = func(name string, args ...string) error {
+	runCommand = func(_ context.Context, name string, args ...string) error {
 		return errors.New("simulated transfer failure")
 	}
 	defer func() { runCommand = orig }()
@@ -130,7 +131,34 @@ func TestRunCommandFailurePropagates(t *testing.T) {
 		BackupTarget: "s3://bucket",
 		CentralDir:   "/var/lib/ttrack",
 	}
-	if err := Run(cfg); err == nil {
+	if err := Run(context.Background(), cfg); err == nil {
 		t.Fatal("expected error to propagate from runCommand, got nil")
+	}
+}
+
+func TestRunCancelledContextKillsProcess(t *testing.T) {
+	orig := runCommand
+	defer func() { runCommand = orig }()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel immediately
+
+	called := false
+	runCommand = func(_ context.Context, name string, args ...string) error {
+		called = true
+		return ctx.Err()
+	}
+
+	cfg := &config.Config{
+		BackupType:   "rsync",
+		BackupTarget: "user@host:/path",
+		CentralDir:   "/tmp",
+	}
+	err := Run(ctx, cfg)
+	if err == nil {
+		t.Error("expected error from cancelled context, got nil")
+	}
+	if !called {
+		t.Error("runCommand spy was not called")
 	}
 }

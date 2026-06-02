@@ -4,6 +4,7 @@
 package backup
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os/exec"
@@ -14,8 +15,8 @@ import (
 
 // runCommand is the shell-out function. Tests replace it with a spy to verify
 // the correct command is assembled without performing actual transfers.
-var runCommand = func(name string, args ...string) error {
-	cmd := exec.Command(name, args...)
+var runCommand = func(ctx context.Context, name string, args ...string) error {
+	cmd := exec.CommandContext(ctx, name, args...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("%s %s: %w\noutput: %s", name, strings.Join(args, " "), err, out)
@@ -45,14 +46,15 @@ func buildBackupArgs(cfg *config.Config) (name string, args []string, err error)
 	}
 }
 
-// Run executes a backup for the given configuration. Returns an error when the
-// type is disabled, misconfigured, or the external command fails.
-func Run(cfg *config.Config) error {
+// Run executes a backup for the given configuration. ctx cancellation kills
+// the external process. Returns an error when the type is disabled,
+// misconfigured, or the external command fails.
+func Run(ctx context.Context, cfg *config.Config) error {
 	name, args, err := buildBackupArgs(cfg)
 	if err != nil {
 		return err
 	}
-	return runCommand(name, args...)
+	return runCommand(ctx, name, args...)
 }
 
 // RunCLI is the entry point for `ttrack backup`. Runs a backup immediately and
@@ -63,7 +65,7 @@ func RunCLI(_ []string) error {
 	if cfg.BackupType == "" {
 		return errors.New("backup is not configured (backup_type is empty in config)")
 	}
-	if err := Run(cfg); err != nil {
+	if err := Run(context.Background(), cfg); err != nil {
 		return err
 	}
 	fmt.Printf("backup completed (type=%s target=%s)\n", cfg.BackupType, cfg.BackupTarget)

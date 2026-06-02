@@ -303,7 +303,7 @@ func TestBackupLoopDisabledDoesNotFire(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 
-	go backupLoop(ctx, cfg, updates, func(c *config.Config) error {
+	go backupLoop(ctx, cfg, updates, func(_ context.Context, c *config.Config) error {
 		fired <- struct{}{}
 		return nil
 	})
@@ -332,7 +332,7 @@ func TestBackupLoopFiresOnTick(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	go backupLoop(ctx, cfg, updates, func(c *config.Config) error {
+	go backupLoop(ctx, cfg, updates, func(_ context.Context, c *config.Config) error {
 		select {
 		case fired <- struct{}{}:
 		default:
@@ -360,7 +360,7 @@ func TestBackupLoopReloadResetsTimer(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	go backupLoop(ctx, initial, updates, func(c *config.Config) error {
+	go backupLoop(ctx, initial, updates, func(_ context.Context, c *config.Config) error {
 		select {
 		case fired <- struct{}{}:
 		default:
@@ -394,7 +394,7 @@ func TestBackupLoopStopsOnContextCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	go func() {
-		backupLoop(ctx, cfg, updates, func(c *config.Config) error { return nil })
+		backupLoop(ctx, cfg, updates, func(_ context.Context, c *config.Config) error { return nil })
 		close(exited)
 	}()
 
