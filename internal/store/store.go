@@ -375,6 +375,10 @@ func procStartTime(pid int) (time.Time, error) {
 	if err != nil {
 		return time.Time{}, err
 	}
+	// linuxClockTicks is USER_HZ — the number of scheduler ticks per second.
+	// The accurate value requires sysconf(_SC_CLK_TCK) which needs CGO; 100 is
+	// correct for virtually all Linux kernels (CONFIG_HZ=100 default) and is the
+	// standard CGO-free approach used by procfs libraries.
 	const linuxClockTicks = 100
 	return btime.Add(time.Duration(startTicks) * time.Second / linuxClockTicks), nil
 }
