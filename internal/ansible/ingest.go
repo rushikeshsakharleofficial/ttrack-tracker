@@ -36,7 +36,7 @@ func Ingest(_ []string) error {
 
 	// Parse the run event to extract the run ID.
 	runID, err := extractRunID(data)
-	if err != nil || !validRunID(runID) {
+	if err != nil || !ValidRunID(runID) {
 		return fmt.Errorf("ansible-ingest: bad run event: %v", err)
 	}
 
@@ -75,9 +75,9 @@ func extractRunID(data []byte) (string, error) {
 	return "", fmt.Errorf("no events in stdin")
 }
 
-// validRunID allows only safe characters for use in a file path.
+// ValidRunID allows only safe characters for use in a file path.
 // Format produced by the plugin: "<ts>-<pid>", e.g. "20260527T140300-12345".
-func validRunID(id string) bool {
+func ValidRunID(id string) bool {
 	if len(id) < 5 || len(id) > 64 {
 		return false
 	}

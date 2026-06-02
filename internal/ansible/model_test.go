@@ -169,15 +169,36 @@ func TestValidAnsibleRunID_ingest(t *testing.T) {
 		strings.Repeat("a", 65),
 		"has space",
 	}
-	// validRunID is unexported but tested via package-level access.
+	// ValidRunID is exported; tested here via direct call.
 	for _, id := range good {
-		if !validRunID(id) {
+		if !ValidRunID(id) {
 			t.Errorf("expected valid: %q", id)
 		}
 	}
 	for _, id := range bad {
-		if validRunID(id) {
+		if ValidRunID(id) {
 			t.Errorf("expected invalid: %q", id)
+		}
+	}
+}
+
+func TestValidRunID(t *testing.T) {
+	cases := []struct {
+		id   string
+		want bool
+	}{
+		{"20260527T140300-12345", true},
+		{"abc-def_GHI", true},
+		{"", false},
+		{"ab", false},
+		{strings.Repeat("x", 65), false},
+		{"has space", false},
+		{"has/slash", false},
+		{"has.dot", false},
+	}
+	for _, tc := range cases {
+		if got := ValidRunID(tc.id); got != tc.want {
+			t.Errorf("ValidRunID(%q) = %v, want %v", tc.id, got, tc.want)
 		}
 	}
 }

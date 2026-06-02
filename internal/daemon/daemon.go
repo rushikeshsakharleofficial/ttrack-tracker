@@ -26,6 +26,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
+	"ttrack/internal/ansible"
 	"ttrack/internal/backup"
 	"ttrack/internal/config"
 	"ttrack/internal/crypto"
@@ -477,7 +478,7 @@ func handleTail(conn *net.UnixConn, id string, cred *unix.Ucred, reg *registry) 
 // The run id is already validated by the ingest process but we re-validate
 // here before using it as a path component.
 func handleAnsible(conn *net.UnixConn, br *bufio.Reader, runID string, cred *unix.Ucred, reg *registry) {
-	if !validAnsibleRunID(runID) {
+	if !ansible.ValidRunID(runID) {
 		_, _ = conn.Write([]byte("ERR invalid ansible run id\n"))
 		return
 	}
@@ -522,21 +523,6 @@ func handleAnsible(conn *net.UnixConn, br *bufio.Reader, runID string, cred *uni
 			return
 		}
 	}
-}
-
-// validAnsibleRunID accepts only safe characters (alphanumeric, -, _, T) so
-// the run id can be used directly as a filename without path traversal risk.
-func validAnsibleRunID(id string) bool {
-	if len(id) < 5 || len(id) > 64 {
-		return false
-	}
-	for _, c := range id {
-		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-			(c >= '0' && c <= '9') || c == '-' || c == '_' || c == 'T') {
-			return false
-		}
-	}
-	return true
 }
 
 func peerCred(c *net.UnixConn) (*unix.Ucred, error) {
