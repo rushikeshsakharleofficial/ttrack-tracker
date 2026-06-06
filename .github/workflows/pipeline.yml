@@ -226,23 +226,34 @@ jobs:
 
       # ─────────────────────────────────────────────────────────────────────
       # Stage: Deploy to Jump Server  (main branch only)
+      # Required secrets: JUMP_SERVER_KEY, JUMP_SERVER_HOST, JUMP_SERVER_USER
       # ─────────────────────────────────────────────────────────────────────
       - name: Setup SSH
         if: github.ref == 'refs/heads/main'
         env:
           JUMP_SERVER_KEY: ${{ secrets.JUMP_SERVER_KEY }}
+          JUMP_SERVER_HOST: ${{ secrets.JUMP_SERVER_HOST }}
         run: |
+          set -e
+          test -n "$JUMP_SERVER_HOST"
           mkdir -p ~/.ssh
           printf '%s\n' "$JUMP_SERVER_KEY" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H 89.167.44.42 >> ~/.ssh/known_hosts 2>/dev/null
+          ssh-keyscan -H "$JUMP_SERVER_HOST" >> ~/.ssh/known_hosts 2>/dev/null
 
       - name: Deploy to Jump Server
         if: github.ref == 'refs/heads/main'
+        env:
+          JUMP_SERVER_HOST: ${{ secrets.JUMP_SERVER_HOST }}
+          JUMP_SERVER_USER: ${{ secrets.JUMP_SERVER_USER }}
         run: |
+          set -e
+          test -n "$JUMP_SERVER_HOST"
+          test -n "$JUMP_SERVER_USER"
+          JUMP_TARGET="${JUMP_SERVER_USER}@${JUMP_SERVER_HOST}"
           DEB=$(ls release/*.deb | head -1)
           scp -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no \
-              "$DEB" rushikesh.sakharle@89.167.44.42:/tmp/ttrack-latest.deb
+              "$DEB" "$JUMP_TARGET:/tmp/ttrack-latest.deb"
 
           # Write deploy script to a file and scp it — avoids stdin pipe
           # which breaks when SSH_ORIGINAL_COMMAND goes through ttrack-ssh-wrap
@@ -262,7 +273,7 @@ jobs:
             'fi' > /tmp/ttrack-deploy.sh
 
           scp -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no \
-              /tmp/ttrack-deploy.sh rushikesh.sakharle@89.167.44.42:/tmp/ttrack-deploy.sh
+              /tmp/ttrack-deploy.sh "$JUMP_TARGET:/tmp/ttrack-deploy.sh"
 
           ssh -T -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -o BatchMode=yes \
-              rushikesh.sakharle@89.167.44.42 'bash /tmp/ttrack-deploy.sh'
+              "$JUMP_TARGET" 'bash /tmp/ttrack-deploy.sh'
