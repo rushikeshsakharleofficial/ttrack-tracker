@@ -2,6 +2,7 @@ package crypto
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"strings"
 	"testing"
@@ -95,8 +96,36 @@ func TestWrongKeyFails(t *testing.T) {
 	magic := make([]byte, len(Magic))
 	_, _ = io.ReadFull(r, magic)
 	dr, _ := NewReader(r, k2)
-	got, _ := io.ReadAll(dr)
+	got, err := io.ReadAll(dr)
+	if !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("wrong key should return ErrCorrupt, got %v", err)
+	}
 	if strings.Contains(string(got), "secret") {
 		t.Fatal("wrong key must not decrypt plaintext")
+	}
+}
+
+func TestTamperedCiphertextFails(t *testing.T) {
+	key, _ := GenerateKey()
+	var buf bytes.Buffer
+	w, _ := NewWriter(&buf, key)
+	_, _ = w.Write([]byte("audited command output\n"))
+
+	data := append([]byte(nil), buf.Bytes()...)
+	if len(data) <= len(Magic)+4+12 {
+		t.Fatalf("encrypted fixture unexpectedly short: %d", len(data))
+	}
+	data[len(data)-1] ^= 0xff
+
+	r := bytes.NewReader(data)
+	magic := make([]byte, len(Magic))
+	_, _ = io.ReadFull(r, magic)
+	dr, _ := NewReader(r, key)
+	got, err := io.ReadAll(dr)
+	if !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("tampered ciphertext should return ErrCorrupt, got %v", err)
+	}
+	if strings.Contains(string(got), "audited") {
+		t.Fatal("tampered ciphertext must not decrypt plaintext")
 	}
 }
