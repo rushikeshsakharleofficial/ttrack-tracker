@@ -9,9 +9,10 @@
 //	...
 //
 // Each Write to the writer becomes one frame with a fresh random nonce. The
-// reader decrypts frames in order; a truncated or corrupt trailing frame is
-// treated as end-of-stream (a recording whose daemon died mid-write is still
-// readable up to the last complete frame).
+// reader decrypts frames in order; a truncated trailing frame is treated as
+// end-of-stream (a recording whose daemon died mid-write is still readable up
+// to the last complete frame). Corrupt or tampered complete frames return an
+// explicit error instead of looking like a normal EOF.
 package crypto
 
 import (
@@ -19,6 +20,7 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 )
@@ -28,6 +30,12 @@ const Magic = "TTEC1\n"
 
 // KeySize is the AES-256 key length in bytes.
 const KeySize = 32
+
+// ErrCorrupt is returned when an encrypted stream contains an invalid frame or
+// a frame that fails AES-GCM authentication. A truncated trailing frame still
+// returns io.EOF so sessions interrupted mid-write remain readable up to the
+// last complete frame.
+var ErrCorrupt = errors.New("crypto: corrupt encrypted stream")
 
 // GenerateKey returns a new random 32-byte key.
 func GenerateKey() ([]byte, error) {
@@ -110,24 +118,28 @@ func (d *decReader) Read(p []byte) (int, error) {
 	for len(d.buf) == 0 {
 		var lenbuf [4]byte
 		if _, err := io.ReadFull(d.r, lenbuf[:]); err != nil {
-			return 0, io.EOF // clean end or truncated length: stop
+			// Clean end, or a daemon dying while starting the next frame: stop at
+			// the last complete frame already returned.
+			return 0, io.EOF
 		}
 		flen := binary.BigEndian.Uint32(lenbuf[:])
 		if int(flen) < d.gcm.NonceSize() {
-			return 0, io.EOF
+			return 0, fmt.Errorf("%w: frame length %d smaller than nonce size %d", ErrCorrupt, flen, d.gcm.NonceSize())
 		}
 		const maxFrameSize = 1 << 20 // 1 MiB — largest expected PTY write chunk
 		if flen > maxFrameSize {
-			return 0, io.ErrUnexpectedEOF // corrupt or truncated file
+			return 0, fmt.Errorf("%w: frame length %d exceeds maximum %d", ErrCorrupt, flen, maxFrameSize)
 		}
 		frame := make([]byte, flen)
 		if _, err := io.ReadFull(d.r, frame); err != nil {
-			return 0, io.EOF // truncated trailing frame: stop at last complete one
+			// Preserve the fail-open recovery property for a daemon interrupted
+			// mid-write: return bytes up to the last complete frame.
+			return 0, io.EOF
 		}
 		ns := d.gcm.NonceSize()
 		pt, err := d.gcm.Open(nil, frame[:ns], frame[ns:], nil)
 		if err != nil {
-			return 0, io.EOF // corrupt frame: stop
+			return 0, fmt.Errorf("%w: frame authentication failed", ErrCorrupt)
 		}
 		d.buf = pt
 	}
