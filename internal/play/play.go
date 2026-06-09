@@ -90,9 +90,7 @@ func PlayFile(path string, speed, maxIdle float64) error {
 	if err != nil {
 		return err
 	}
-	if maxIdle > 0 {
-		events = clampIdleGaps(events, maxIdle)
-	}
+	events = clampIdleGaps(events, maxIdle)
 
 	interactive := term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd()))
 	if !interactive {
@@ -106,7 +104,7 @@ func PlayFile(path string, speed, maxIdle float64) error {
 		}
 		return err
 	}
-	return playInteractive(events, speed, maxIdle)
+	return playInteractive(events, speed)
 }
 
 func readCastEvents(r *bufio.Reader) ([]cast.Event, error) {
@@ -176,7 +174,7 @@ func playLinear(events []cast.Event, speed float64) error {
 // bottom transport bar (progress, time, speed). Controls: space pause/resume,
 // arrows or h/l seek, up/down or +/- speed, g goto prompt, mouse-click the bar
 // to seek, q quit. Playback holds on the final frame at the end until quit.
-func playInteractive(events []cast.Event, speed, maxIdle float64) error {
+func playInteractive(events []cast.Event, speed float64) error {
 	if speed <= 0 {
 		speed = 1.0
 	}
