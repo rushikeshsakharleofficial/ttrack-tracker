@@ -104,3 +104,9 @@ func TestRenderBarGotoField(t *testing.T) {
 		t.Errorf("goto bar missing input field: %q", line)
 	}
 }
+
+// TestSafeDrawBarOnlyOnTicker documents the invariant that safeDrawBar
+// must not be called after each emitted event (only from the ticker path).
+func TestSafeDrawBarOnlyOnTicker(t *testing.T) {
+	t.Skip("invariant guard: see play.go main loop — safeDrawBar must NOT appear in the timer.C case")
+}

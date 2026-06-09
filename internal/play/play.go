@@ -711,7 +711,6 @@ func playInteractive(events []cast.Event, speed float64) error {
 				emit(events[idx].Data)
 			}
 			idx++
-			safeDrawBar() // heal the bar after content (when not mid save/restore)
 		case <-ticker.C:
 			timer.Stop()
 			safeDrawBar()
