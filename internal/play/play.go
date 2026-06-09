@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -253,6 +254,7 @@ func playInteractive(events []cast.Event, speed float64) error {
 	var scrollBuf lineBuf
 	scrollMode := false
 	scrollOffset := 0
+	var renderBuf *strings.Builder // non-nil during renderTo → redirects emit to buffer
 
 	// frozen reports whether playback is held (any modal/paused state).
 	frozen := func() bool { return paused || inGoto || listMode || scrollMode }
@@ -285,7 +287,11 @@ func playInteractive(events []cast.Event, speed float64) error {
 		}
 	}
 	emit := func(data string) {
-		_, _ = io.WriteString(os.Stdout, data)
+		if renderBuf != nil {
+			renderBuf.WriteString(data)
+		} else {
+			_, _ = io.WriteString(os.Stdout, data)
+		}
 		scrollBuf.feed(data)
 		d, reset := saveDelta(data)
 		if reset { // RIS in the stream clears the save slot
@@ -314,11 +320,15 @@ func playInteractive(events []cast.Event, speed float64) error {
 	// would drop the alt screen and scroll region). Resets the scrollback buffer
 	// so it matches the replayed output.
 	renderTo := func(target float64) {
-		_, _ = io.WriteString(os.Stdout, clearScreen)
+		var b strings.Builder
+		b.WriteString(clearScreen)
+		renderBuf = &b
 		saveDepth = 0
 		idx = 0
 		scrollBuf = lineBuf{}
 		emitForward(target)
+		renderBuf = nil
+		_, _ = io.WriteString(os.Stdout, b.String())
 	}
 	syncClock := func() {
 		if !frozen() {
