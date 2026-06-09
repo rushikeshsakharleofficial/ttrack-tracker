@@ -1,23 +1,22 @@
 <div align="center">
 
+# ttrack
 
-# Terminal Session Recorder for Linux — ttrack
+Terminal session recorder and audit tool for Linux — captures every shell session, encrypts it at rest, and lets operators replay, search, and live-tail from a root-only central store.
 
-Record and replay Linux terminal sessions as asciinema-compatible casts, with an optional root daemon that collects every user's session into a root-only central store for audit.
-
-[![CI](https://github.com/rushikeshsakharleofficial/ttrack-tracker/actions/workflows/pipeline.yml/badge.svg)](https://github.com/rushikeshsakharleofficial/ttrack-tracker/actions/workflows/pipeline.yml)
-[![Release](https://img.shields.io/github/v/release/rushikeshsakharleofficial/ttrack-tracker)](https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases)
-[![License: GPL-2.0](https://img.shields.io/badge/license-GPL--2.0-blue.svg)](LICENSE)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
-[![Issues](https://img.shields.io/github/issues/rushikeshsakharleofficial/ttrack-tracker)](https://github.com/rushikeshsakharleofficial/ttrack-tracker/issues)
-
-**Free and 100% open source.** Contributions welcome — [open an issue](https://github.com/rushikeshsakharleofficial/ttrack-tracker/issues) or [send a PR](CONTRIBUTING.md).
+[![Build](https://img.shields.io/github/actions/workflow/status/rushikeshsakharleofficial/ttrack-tracker/pipeline.yml?style=for-the-badge)](https://github.com/rushikeshsakharleofficial/ttrack-tracker/actions)
+[![Release](https://img.shields.io/github/v/release/rushikeshsakharleofficial/ttrack-tracker?style=for-the-badge)](https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases)
+[![License](https://img.shields.io/github/license/rushikeshsakharleofficial/ttrack-tracker?style=for-the-badge)](LICENSE)
+[![Stars](https://img.shields.io/github/stars/rushikeshsakharleofficial/ttrack-tracker?style=for-the-badge)](https://github.com/rushikeshsakharleofficial/ttrack-tracker/stargazers)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen?style=for-the-badge)](CONTRIBUTING.md)
 
 </div>
 
 ---
 
-`ttrack` is a command-line terminal session recorder for Linux. It runs a shell under a PTY, captures the output as an [asciinema v2](https://docs.asciinema.org/manual/asciicast/v2/) cast file, and replays it with original timing. A companion root daemon, `ttrackd`, collects sessions from all users into a root-only central store (`/var/lib/ttrack`) so a host's operator activity can be reviewed and live-tailed for audit. It is a single static Go binary with no runtime dependencies.
+## What is this?
+
+`ttrack` is a command-line terminal session recorder for Linux. It runs a shell under a PTY, captures output as an [asciinema v2](https://docs.asciinema.org/manual/asciicast/v2/) cast file, and replays it with original timing. A companion root daemon, `ttrackd`, collects sessions from all users into a root-only central store (`/var/lib/ttrack`) so host activity can be reviewed and live-tailed for audit. It is a single static Go binary with no runtime dependencies.
 
 ## Table of contents
 
@@ -28,11 +27,15 @@ Record and replay Linux terminal sessions as asciinema-compatible casts, with an
 - [Commands](#commands)
 - [Audit mode (central root-only store)](#audit-mode-central-root-only-store)
 - [Auto-record on login](#auto-record-on-login-optional)
+- [Record non-interactive SSH](#record-non-interactive-ssh-optional)
 - [Shell completion](#shell-completion)
 - [Configuration](#configuration)
 - [File format](#file-format)
 - [Troubleshooting](#troubleshooting)
 - [Building and packaging](#building-and-packaging)
+- [Project structure](#project-structure)
+- [Ansible tracking](#ansible-tracking)
+- [Documentation](#documentation)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -216,7 +219,7 @@ These read the central root-only store and require root:
 | `ttrack tail [-n N] <id>` | Show last N lines of a session's recorded output (default 20). |
 | `ttrack tail -f <id>` | Live-stream an in-progress session from the daemon. |
 | `ttrack tree` | Print a users → sessions tree. |
-| `ttrack search [--from T] [--to T] [--user U] [-i] <pattern>` | Find a string across recordings. `--from`/`--to` accept any `date -d` format. `--all` lists every session. |
+| `ttrack search [--from T] [--to T] [--user U] [-i] <pattern>` | Find a string across recordings. `--from`/`--to` accept any `date -d` format. |
 | `ttrack export [-o file] <id>` | Decrypt a recording to a plaintext asciinema cast. |
 | `ttrack prune [--yes]` | Interactively delete recordings by user and time. |
 
@@ -492,32 +495,54 @@ Packaging uses [`nfpm`](https://github.com/goreleaser/nfpm) (`go install` it fir
 
 **Releases are automated.** Every push to `main` runs the `Auto Release` workflow, which bumps the patch version from the latest tag and publishes a GitHub Release with `rpm`, `deb`, the static binary, and `SHA256SUMS`.
 
-## Testing
-
 ```bash
-make test                  # unit tests (go test ./...)
+make test           # unit tests (go test ./...)
 ```
 
 ## Project structure
 
-```text
-cmd/ttrack         CLI (rec/play/ls/tail/tree/search/export/ansible/--check)
-cmd/ttrackd        root collector daemon
-internal/cast      asciinema v2 cast read/write
-internal/crypto    at-rest AES-256-GCM encryption (+ tests)
-internal/config    runtime config file parser + singleton
-internal/record    PTY capture for `ttrack rec`
-internal/play      replay (snapshot-bounded)
-internal/store     storage paths + transparent decrypt
-internal/audit     root-only audit commands
-internal/daemon    ttrackd socket server, live tail fan-out, ingest, key mgmt
-internal/ansible   Ansible tracking (model, ingest, commands)
-internal/complete  shell completion
+```
+cmd/
+  ttrack/           CLI (rec/play/ls/tail/tree/search/export/ansible/--check)
+  ttrackd/          root collector daemon
+docs/
+  superpowers/
+  wiki/
+internal/
+  ansible/          Ansible tracking (model, ingest, commands)
+  audit/            root-only audit commands
+  auth/
+  backup/
+  cast/             asciinema v2 cast read/write
+  complete/         shell completion
+  config/           runtime config file parser + singleton
+  crypto/           at-rest AES-256-GCM encryption (+ tests)
+  daemon/           ttrackd socket server, live tail fan-out, ingest, key mgmt
+  initcmd/
+  logger/
+  play/             replay (snapshot-bounded)
+  record/           PTY capture for `ttrack rec`
+  store/            storage paths + transparent decrypt
+man/
+  ttrack.1          man page
+packaging/
+  postinstall.sh
+  postremove.sh
+  preremove.sh
+scripts/
+  ansible/
+  profile.d/
+  systemd/
+CONTRIBUTING.md
+LICENSE
+Makefile
+go.mod
+nfpm.yaml
 ```
 
-## Ansible Tracking
+## Ansible tracking
 
-ttrack can record Ansible playbook runs on the **controller** host (the machine running `ansible-playbook`). Each task — its name, module, host, status (`ok`/`changed`/`failed`/`unreachable`/`skipped`), output, and rc — is captured and stored encrypted in the central store.
+ttrack records Ansible playbook runs on the **controller** host (the machine running `ansible-playbook`). Each task — its name, module, host, status (`ok`/`changed`/`failed`/`unreachable`/`skipped`), output, and rc — is captured and stored encrypted in the central store.
 
 ### Enable the callback plugin
 
@@ -575,6 +600,16 @@ If `ttrackd` is unreachable, the run is saved to `~/.local/share/ttrack/ansible/
 
 Only controllers with `ttrack` installed produce Ansible records. Managed hosts still receive raw Ansible SSH execs (captured by the sshd `ForceCommand` wrapper if configured, but those carry no task name or status).
 
+## Documentation
+
+| Resource | Description |
+|:---------|:------------|
+| [README](README.md) | This file — installation, quick start, full command reference |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Bug reports, PR workflow, project layout, and test instructions |
+| [man ttrack](man/ttrack.1) | Manual page — installed to `/usr/share/man/man1/ttrack.1` by packages |
+| [LICENSE](LICENSE) | GNU General Public License v2.0 |
+| [Releases](https://github.com/rushikeshsakharleofficial/ttrack-tracker/releases) | Pre-built `.rpm`, `.deb`, and static binaries |
+
 ## Contributing
 
 ttrack is **100% open source** and community-driven — contributions of all sizes are welcome.
@@ -584,12 +619,18 @@ ttrack is **100% open source** and community-driven — contributions of all siz
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide (bug reports, PR workflow, project layout, tests).
 
+<a href="https://github.com/rushikeshsakharleofficial/ttrack-tracker/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=rushikeshsakharleofficial/ttrack-tracker" />
+</a>
+
 ## License
 
 Licensed under the GNU General Public License v2.0. See [LICENSE](LICENSE).
 
-## Maintainer TODOs
+---
 
-- Add a 1280×640 social preview image (Settings → Social preview): tool name, one-line description, a terminal screenshot.
-- Add a recorded `.cast`/GIF demo asset and embed it in the Demo section.
-- **Back up the encryption key** `/var/lib/ttrack/.ttrack.key` offsite — losing it makes all encrypted recordings permanently unreadable.
+<div align="center">
+
+[![Star History Chart](https://api.star-history.com/svg?repos=rushikeshsakharleofficial/ttrack-tracker&type=Date)](https://star-history.com/#rushikeshsakharleofficial/ttrack-tracker&Date)
+
+</div>
