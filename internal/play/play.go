@@ -90,13 +90,16 @@ func PlayFile(path string, speed, maxIdle float64) error {
 	if err != nil {
 		return err
 	}
+	if maxIdle > 0 {
+		events = clampIdleGaps(events, maxIdle)
+	}
 
 	interactive := term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd()))
 	if !interactive {
 		// stdin may still be a tty (e.g. output piped). Suppress echo and drain
 		// any terminal query responses so they don't leak onto the shell prompt.
 		restore := beginReplayInput()
-		err = playLinear(events, speed, maxIdle)
+		err = playLinear(events, speed)
 		drainTerminalInput()
 		if restore != nil {
 			restore()
@@ -121,9 +124,31 @@ func readCastEvents(r *bufio.Reader) ([]cast.Event, error) {
 	return events, nil
 }
 
+// clampIdleGaps returns a new event slice with inter-event gaps capped to
+// maxIdle seconds. Timestamps are remapped so every downstream consumer
+// (seek, chapters, clock) sees a consistent compressed timeline.
+// Returns the original slice unchanged when maxIdle <= 0.
+func clampIdleGaps(events []cast.Event, maxIdle float64) []cast.Event {
+	if maxIdle <= 0 || len(events) == 0 {
+		return events
+	}
+	out := make([]cast.Event, len(events))
+	copy(out, events)
+	var offset, last float64
+	for i, ev := range out {
+		gap := ev.Time - last
+		last = ev.Time
+		if gap > maxIdle {
+			offset += gap - maxIdle
+		}
+		out[i].Time = ev.Time - offset
+	}
+	return out
+}
+
 // playLinear plays every event straight through with original timing, used
 // when stdout is not a terminal (piping, redirection).
-func playLinear(events []cast.Event, speed, maxIdle float64) error {
+func playLinear(events []cast.Event, speed float64) error {
 	if speed <= 0 {
 		speed = 1.0
 	}
@@ -134,9 +159,6 @@ func playLinear(events []cast.Event, speed, maxIdle float64) error {
 	for _, ev := range events {
 		gap := ev.Time - last
 		last = ev.Time
-		if maxIdle > 0 && gap > maxIdle {
-			gap = maxIdle
-		}
 		if gap > 0 {
 			time.Sleep(time.Duration(gap / speed * float64(time.Second)))
 		}
@@ -165,7 +187,7 @@ func playInteractive(events []cast.Event, speed, maxIdle float64) error {
 		// keeping the echo-off + drain protection so terminal query responses
 		// don't leak onto the shell prompt.
 		r := beginReplayInput()
-		e := playLinear(events, speed, maxIdle)
+		e := playLinear(events, speed)
 		drainTerminalInput()
 		if r != nil {
 			r()
