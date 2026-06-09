@@ -375,7 +375,8 @@ func playInteractive(events []cast.Event, speed float64) error {
 			start = 0
 		}
 
-		_, _ = io.WriteString(os.Stdout, resetRegion+clearScreen+"\x1b[0m")
+		var b strings.Builder
+		b.WriteString(resetRegion + clearScreen + "\x1b[0m")
 		for i := start; i < end; i++ {
 			line := scrollBuf.lines[i]
 			if visWidth(line) > w {
@@ -384,8 +385,9 @@ func playInteractive(events []cast.Event, speed float64) error {
 			// \x1b[0m before: start each line with default attributes
 			// \x1b[0m\x1b[K after: reset SGR then erase trailing cells with
 			// default background, preventing color bleed into unfilled columns
-			fmt.Fprint(os.Stdout, "\x1b[0m"+line+"\x1b[0m\x1b[K\r\n")
+			b.WriteString("\x1b[0m" + line + "\x1b[0m\x1b[K\r\n")
 		}
+		_, _ = io.WriteString(os.Stdout, b.String())
 		drawScrollBar(total, scrollOffset, hh)
 	}
 
