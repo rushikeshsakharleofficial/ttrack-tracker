@@ -42,7 +42,46 @@ jobs:
           cache: true
 
       # ─────────────────────────────────────────────────────────────────────
+      # Stage: Format
+      # ─────────────────────────────────────────────────────────────────────
+      - name: Format
+        run: |
+          unformatted=$(find . -name "*.go" \
+              -not -path "./.gopath/*" \
+              -not -path "./.gocache/*" \
+              -not -path "./vendor/*" \
+              | xargs gofmt -l)
+          if [ -n "$unformatted" ]; then
+              echo "Not gofmt-clean:"
+              echo "$unformatted"
+              exit 1
+          fi
+
+      # ─────────────────────────────────────────────────────────────────────
+      # Stage: Vet
+      # ─────────────────────────────────────────────────────────────────────
+      - name: Vet
+        run: go vet ./...
+
+      # ─────────────────────────────────────────────────────────────────────
+      # Stage: Test
+      # ─────────────────────────────────────────────────────────────────────
+      - name: Test
+        run: |
+          set -o pipefail
+          go test ./... -v -count=1 2>&1 | tee test-results.txt
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: test-results.txt
+
+      # ─────────────────────────────────────────────────────────────────────
       # Stage: Release Version  (main branch only)
+      # Runs only after Format/Vet/Test gates pass, so a broken commit can
+      # never receive a version bump or be pushed back to main.
       # Computes next version, updates Makefile / man page / README,
       # commits [ci skip] and pushes, exports RELEASE_VERSION for later steps.
       # ─────────────────────────────────────────────────────────────────────
@@ -97,41 +136,6 @@ jobs:
           VERSION=$(grep -E '^VERSION \?=' Makefile | head -1 | sed 's/VERSION ?= //')
           echo "RELEASE_VERSION=${VERSION}" >> "$GITHUB_ENV"
           echo "Release version: v${VERSION} (from Makefile, PR build)"
-
-      # ─────────────────────────────────────────────────────────────────────
-      # Stage: Format
-      # ─────────────────────────────────────────────────────────────────────
-      - name: Format
-        run: |
-          unformatted=$(find . -name "*.go" \
-              -not -path "./.gopath/*" \
-              -not -path "./.gocache/*" \
-              -not -path "./vendor/*" \
-              | xargs gofmt -l)
-          if [ -n "$unformatted" ]; then
-              echo "Not gofmt-clean:"
-              echo "$unformatted"
-              exit 1
-          fi
-
-      # ─────────────────────────────────────────────────────────────────────
-      # Stage: Vet
-      # ─────────────────────────────────────────────────────────────────────
-      - name: Vet
-        run: go vet ./...
-
-      # ─────────────────────────────────────────────────────────────────────
-      # Stage: Test
-      # ─────────────────────────────────────────────────────────────────────
-      - name: Test
-        run: go test ./... -v -count=1 2>&1 | tee test-results.txt
-
-      - name: Upload test results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-results
-          path: test-results.txt
 
       # ─────────────────────────────────────────────────────────────────────
       # Stage: Build
