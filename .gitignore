@@ -27,3 +27,5 @@ docs/superpowers/
 agentdb.rvf
 agentdb.rvf.lock
 ruvector.db
+# Added by code-review-graph
+.code-review-graph/
