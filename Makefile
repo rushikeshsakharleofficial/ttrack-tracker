@@ -2,7 +2,6 @@
 
 PREFIX ?= /usr/local
 VERSION ?= 1.0.43
-VERSION ?= 1.0.43
 NFPM ?= $(shell go env GOPATH)/bin/nfpm
 
 all: build
