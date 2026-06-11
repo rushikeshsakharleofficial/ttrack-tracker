@@ -10,8 +10,8 @@ import (
 func TestClampIdleGaps(t *testing.T) {
 	events := []cast.Event{
 		{Time: 0.5, Type: "o", Data: "a"},
-		{Time: 5.5, Type: "o", Data: "b"}, // 5.0s gap → should clamp to 2.0
-		{Time: 5.6, Type: "o", Data: "c"}, // 0.1s gap → unchanged
+		{Time: 5.5, Type: "o", Data: "b"},  // 5.0s gap → should clamp to 2.0
+		{Time: 5.6, Type: "o", Data: "c"},  // 0.1s gap → unchanged
 		{Time: 10.6, Type: "o", Data: "d"}, // 5.0s gap → should clamp to 2.0
 	}
 	got := clampIdleGaps(events, 2.0)
