@@ -198,6 +198,41 @@ func TestOpenCastEncrypted(t *testing.T) {
 	}
 }
 
+func TestParseSessionRef(t *testing.T) {
+	cases := []struct {
+		ref      string
+		wantUser string
+		wantStem string
+		wantErr  bool
+	}{
+		{"stem", "", "stem", false},
+		{"stem.cast", "", "stem", false},
+		{"alice/stem", "alice", "stem", false},
+		{"alice/stem.cast", "alice", "stem", false},
+		// path traversal
+		{"../etc/passwd", "", "", true},
+		{"alice/../etc", "", "", true},
+		{"/etc/passwd", "", "", true},
+		// empty user or stem
+		{"/stem", "", "", true},
+		{"alice/", "", "", true},
+	}
+	for _, c := range cases {
+		u, s, err := ParseSessionRef(c.ref)
+		if (err != nil) != c.wantErr {
+			t.Errorf("ParseSessionRef(%q) error=%v, wantErr=%v", c.ref, err, c.wantErr)
+			continue
+		}
+		if err != nil {
+			continue
+		}
+		if u != c.wantUser || s != c.wantStem {
+			t.Errorf("ParseSessionRef(%q) = (%q, %q), want (%q, %q)",
+				c.ref, u, s, c.wantUser, c.wantStem)
+		}
+	}
+}
+
 func TestFindCentral(t *testing.T) {
 	_, central, _ := setupTempEnv(t)
 	user := "alice"
