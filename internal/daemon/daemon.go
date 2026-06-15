@@ -142,17 +142,22 @@ func (sub *subscriber) drain() {
 }
 
 func (s *session) addTailer(c net.Conn, path string) {
-	// Replay what has been recorded so far (decrypted), then subscribe to live
-	// plaintext bytes.
-	if rc, err := store.OpenCast(path); err == nil {
-		_, copyErr := io.Copy(c, rc)
-		closeErr := rc.Close()
-		if copyErr != nil || closeErr != nil {
-			_ = c.Close()
-			return
-		}
-	}
+	// Subscribe first so bytes written after the snapshot cannot be missed: any
+	// new chunk lands in the subscriber channel and is drained after replay.
 	s.subscribe(c)
+
+	// Replay the snapshot (bounded to file size at open time) so replay stops
+	// exactly where the live stream begins. Bytes appended while we replay are
+	// already queued in the subscriber channel and delivered afterward.
+	rc, err := store.OpenCastSnapshot(path)
+	if err != nil {
+		return
+	}
+	_, copyErr := io.Copy(c, rc)
+	closeErr := rc.Close()
+	if copyErr != nil || closeErr != nil {
+		_ = c.Close()
+	}
 }
 
 func (s *session) close() error {
@@ -369,6 +374,16 @@ func Run(ctx context.Context, cfg *config.Config, reload <-chan *config.Config) 
 	}
 }
 
+// handshakeTimeout is how long the daemon waits for the initial protocol
+// command line from a connected client. A short window prevents idle connections
+// from consuming goroutines and file descriptors indefinitely.
+const handshakeTimeout = 10 * time.Second
+
+// maxHandshakeBytes is the maximum number of bytes the daemon reads looking
+// for the terminating '\n' in the initial command line. A line longer than
+// this is rejected immediately to prevent memory exhaustion.
+const maxHandshakeBytes = 256
+
 func handle(conn *net.UnixConn, reg *registry) {
 	defer conn.Close()
 	defer func() {
@@ -382,11 +397,28 @@ func handle(conn *net.UnixConn, reg *registry) {
 		return
 	}
 
-	br := bufio.NewReader(conn)
-	line, err := br.ReadString('\n')
-	if err != nil {
+	// Enforce a read deadline so an idle client cannot hold the goroutine forever.
+	if err := conn.SetReadDeadline(time.Now().Add(handshakeTimeout)); err != nil {
 		return
 	}
+
+	br := bufio.NewReaderSize(conn, maxHandshakeBytes)
+	line, err := br.ReadString('\n')
+	if err != nil {
+		// ReadString with a short buffer returns io.ErrUnexpectedEOF when the
+		// line exceeds the buffer without a newline — treat that as a bad client.
+		return
+	}
+	if len(line) > maxHandshakeBytes {
+		_, _ = conn.Write([]byte("ERR command too long\n"))
+		return
+	}
+
+	// Handshake read complete; clear the deadline so data streaming is not bounded.
+	if err := conn.SetReadDeadline(time.Time{}); err != nil {
+		return
+	}
+
 	line = strings.TrimSpace(line)
 
 	switch {
@@ -431,6 +463,14 @@ func handleRec(conn *net.UnixConn, br *bufio.Reader, cred *unix.Ucred, reg *regi
 
 	sess := &session{f: f, enc: enc, subs: map[net.Conn]*subscriber{}}
 	reg.add(id, sess, path)
+	// ACK the client so it can begin streaming. Without this the client must
+	// rely on write-or-die semantics to detect rejection, and any ERR sent above
+	// races with the client's first data write.
+	if _, err := conn.Write([]byte("OK " + id + "\n")); err != nil {
+		sess.close()
+		reg.remove(id)
+		return
+	}
 	logger.Infof("ttrackd: session started  user=%-20s id=%s", uname, id)
 	var totalBytes int64
 	defer func() {

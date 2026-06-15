@@ -12,6 +12,12 @@
 #
 # Fail-open: on any doubt, exec the original command / login shell so SSH is
 # never broken.
+#
+# TTRACK_REC bypass: this wrapper does NOT check the TTRACK_REC env var.
+# The recording decision is made here unconditionally. Any TTRACK_REC=0 the
+# user injects via their SSH command (e.g. `ssh host "TTRACK_REC=0 bash"`)
+# only affects that inner shell's environment, NOT this wrapper, so it cannot
+# suppress the outer `ttrack rec` invocation.
 
 cmd="$SSH_ORIGINAL_COMMAND"
 shell="${SHELL:-/bin/bash}"
@@ -22,12 +28,21 @@ if [ -z "$cmd" ]; then
 fi
 
 # Pass file-transfer / subsystem commands through untouched.
+# Each pattern is on its own line with explicit | between them so there are no
+# accidental "space" patterns from trailing whitespace before line continuations.
 case "$cmd" in
-    ttrack\ rec*|*/ttrack\ rec*| \
-    scp\ *|*/scp\ *| \
-    sftp-server*|*/sftp-server*|internal-sftp*| \
-    rsync\ --server*|*/rsync\ --server*| \
-    git-receive-pack*|git-upload-pack*|git-upload-archive*)
+    ttrack\ rec*|\
+    */ttrack\ rec*|\
+    scp\ *|\
+    */scp\ *|\
+    sftp-server*|\
+    */sftp-server*|\
+    internal-sftp*|\
+    rsync\ --server*|\
+    */rsync\ --server*|\
+    git-receive-pack*|\
+    git-upload-pack*|\
+    git-upload-archive*)
         exec "$shell" -c "$cmd"
         ;;
 esac

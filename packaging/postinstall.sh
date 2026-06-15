@@ -37,36 +37,16 @@ if [ -f "$ETC_UNIT" ] && [ -f "$PKG_UNIT" ] &&
     fi
 fi
 
-# Install ForceCommand sshd config to capture non-interactive SSH sessions.
-# Idempotent: only write if not already present (preserves manual edits).
-SSHD_MAIN=/etc/ssh/sshd_config
-SSHD_CONF=/etc/ssh/sshd_config.d/zz-ttrack.conf
-if [ -d /etc/ssh/sshd_config.d ]; then
-    # Ensure main sshd_config includes the drop-in directory; without this
-    # line the drop-in files are silently ignored by sshd.
-    if [ -f "$SSHD_MAIN" ] && ! grep -qE '^Include\s+/etc/ssh/sshd_config\.d/\*' "$SSHD_MAIN"; then
-        sed -i '1s|^|Include /etc/ssh/sshd_config.d/*.conf\n|' "$SSHD_MAIN"
-    fi
-    if [ ! -f "$SSHD_CONF" ]; then
-        cat > "$SSHD_CONF" << 'SSHD_EOF'
-# Installed by ttrack package. Remove this file to disable SSH session recording.
-# The wrapper is fail-open: scp/sftp/rsync pass through untouched.
-ForceCommand /usr/libexec/ttrack-ssh-wrap
-SSHD_EOF
-    fi
-    # Validate sshd config — revert if broken
-    if ! sshd -t 2>/dev/null; then
-        # Revert Include injection if we added it
-        sed -i '/^Include \/etc\/ssh\/sshd_config\.d\/\*\.conf$/d' "$SSHD_MAIN" 2>/dev/null || true
-        rm -f "$SSHD_CONF"
-        echo "ttrack: WARNING: sshd config validation failed — ForceCommand not installed" >&2
-        exit 0  # non-fatal: package installs but SSH recording disabled
-    fi
-fi
-# Reload sshd now that config is known valid.
-if command -v systemctl >/dev/null 2>&1; then
-    systemctl reload ssh 2>/dev/null || systemctl reload sshd 2>/dev/null || true
-fi
+# NOTE: SSH ForceCommand and interactive auto-record are NOT enabled here.
+# Both hooks require explicit administrator opt-in to avoid altering SSH
+# behavior on install. Enable them with:
+#
+#   sudo ttrack init --enable-ssh-forcecommand   (non-interactive SSH recording)
+#   sudo ttrack init --enable-autorec             (interactive login recording)
+#
+# Example configs are installed at:
+#   /usr/share/doc/ttrack/ttrack-ssh-wrap.conf.example  (sshd ForceCommand)
+#   /usr/share/doc/ttrack/ttrack-autorec.sh.example     (profile.d hook)
 
 # Enable and (re)start the collector daemon if systemd is present.
 # The daemon generates the per-server encryption key on first start.

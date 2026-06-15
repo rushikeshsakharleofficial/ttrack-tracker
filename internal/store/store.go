@@ -187,33 +187,93 @@ func UserSessions(user string) ([]string, error) {
 	return castsIn(filepath.Join(CentralDir(), user))
 }
 
-// FindCentral locates a session by id (filename or its stem) across all users
-// in the central store. Returns the full path and the owning user.
-func FindCentral(id string) (path, user string, err error) {
-	id = strings.TrimSuffix(id, ".cast")
+// ParseSessionRef parses a session reference into (user, stem) components.
+// Accepted forms: "stem", "stem.cast", "user/stem", "user/stem.cast".
+// Returns an error for path traversal attempts.
+func ParseSessionRef(ref string) (user, stem string, err error) {
+	ref = strings.TrimSuffix(ref, ".cast")
+	if strings.ContainsAny(ref, "\x00") {
+		return "", "", fmt.Errorf("invalid session reference %q", ref)
+	}
+	// user/stem form.
+	if i := strings.IndexByte(ref, '/'); i >= 0 {
+		u := ref[:i]
+		s := ref[i+1:]
+		if u == "" || s == "" || strings.Contains(u, "..") || strings.Contains(s, "/") || strings.Contains(s, "..") {
+			return "", "", fmt.Errorf("invalid session reference %q: path traversal not allowed", ref)
+		}
+		return u, s, nil
+	}
+	// bare stem — user resolved by caller.
+	if strings.Contains(ref, "..") {
+		return "", "", fmt.Errorf("invalid session reference %q: path traversal not allowed", ref)
+	}
+	return "", ref, nil
+}
+
+// FindCentral locates a session by reference across all users in the central
+// store. ref may be a bare session stem, "stem.cast", "user/stem", or
+// "user/stem.cast". Returns the full path and the owning user.
+// Returns an ambiguity error when a bare stem matches sessions from multiple users.
+func FindCentral(ref string) (path, user string, err error) {
+	parsedUser, stem, perr := ParseSessionRef(ref)
+	if perr != nil {
+		return "", "", perr
+	}
+
 	users, err := Users()
 	if err != nil {
 		return "", "", err
 	}
+
+	// Explicit user/stem — look only in that user's directory.
+	if parsedUser != "" {
+		names, nerr := UserSessions(parsedUser)
+		if nerr != nil {
+			return "", "", fmt.Errorf("session %q not found: %w", ref, nerr)
+		}
+		for _, n := range names {
+			if strings.TrimSuffix(n, ".cast") == stem {
+				return filepath.Join(CentralDir(), parsedUser, n), parsedUser, nil
+			}
+		}
+		return "", "", fmt.Errorf("session %q not found in %s/%s", stem, CentralDir(), parsedUser)
+	}
+
+	// Bare stem — search all users; detect ambiguity.
+	type match struct{ path, user string }
+	var matches []match
 	for _, u := range users {
-		names, err := UserSessions(u)
-		if err != nil {
+		names, nerr := UserSessions(u)
+		if nerr != nil {
 			continue
 		}
 		for _, n := range names {
-			if strings.TrimSuffix(n, ".cast") == id {
-				return filepath.Join(CentralDir(), u, n), u, nil
+			if strings.TrimSuffix(n, ".cast") == stem {
+				matches = append(matches, match{filepath.Join(CentralDir(), u, n), u})
 			}
 		}
 	}
+	if len(matches) == 1 {
+		return matches[0].path, matches[0].user, nil
+	}
+	if len(matches) > 1 {
+		owners := make([]string, len(matches))
+		for i, m := range matches {
+			owners[i] = m.user
+		}
+		return "", "", fmt.Errorf("session %q is ambiguous: found under users [%s] — use user/%s to disambiguate",
+			stem, strings.Join(owners, ", "), stem)
+	}
+
 	// Check if the id matches an ansible run — give a useful hint.
 	for _, u := range users {
-		ansiblePath := filepath.Join(AnsibleDir(u), id+".ajsonl")
+		ansiblePath := filepath.Join(AnsibleDir(u), stem+".ajsonl")
 		if _, serr := os.Stat(ansiblePath); serr == nil {
-			return "", "", fmt.Errorf("session %q is an Ansible run — use: ttrack ansible show %s", id, id)
+			return "", "", fmt.Errorf("session %q is an Ansible run — use: ttrack ansible show %s", stem, stem)
 		}
 	}
-	return "", "", fmt.Errorf("session %q not found in %s", id, CentralDir())
+	return "", "", fmt.Errorf("session %q not found in %s", ref, CentralDir())
 }
 
 func castsIn(dir string) ([]string, error) {
@@ -409,18 +469,20 @@ func termWidth() int {
 	return 120
 }
 
-// trunc truncates s to at most n bytes, appending "…" if trimmed.
+// trunc truncates s to at most n runes, appending "…" if trimmed.
+// Rune-safe: never splits a multibyte UTF-8 sequence.
 func trunc(s string, n int) string {
 	if n <= 0 {
 		return ""
 	}
-	if len(s) <= n {
+	runes := []rune(s)
+	if len(runes) <= n {
 		return s
 	}
-	if n <= 3 {
-		return s[:n]
+	if n <= 1 {
+		return string(runes[:n])
 	}
-	return s[:n-1] + "…"
+	return string(runes[:n-1]) + "…"
 }
 
 // TermWidth is the exported terminal width helper (used by audit and ansible packages).

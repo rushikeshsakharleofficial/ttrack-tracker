@@ -2,6 +2,7 @@ package crypto
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"strings"
 	"testing"
@@ -98,5 +99,52 @@ func TestWrongKeyFails(t *testing.T) {
 	got, _ := io.ReadAll(dr)
 	if strings.Contains(string(got), "secret") {
 		t.Fatal("wrong key must not decrypt plaintext")
+	}
+}
+
+func TestWrongKeyReturnsErrAuthentication(t *testing.T) {
+	k1, _ := GenerateKey()
+	k2, _ := GenerateKey()
+	var buf bytes.Buffer
+	w, _ := NewWriter(&buf, k1)
+	_, _ = w.Write([]byte("tampered frame content\n"))
+
+	r := bytes.NewReader(buf.Bytes())
+	magic := make([]byte, len(Magic))
+	_, _ = io.ReadFull(r, magic)
+	dr, _ := NewReader(r, k2)
+
+	_, err := io.ReadAll(dr)
+	if err == nil {
+		t.Fatal("wrong key: expected ErrAuthentication, got nil")
+	}
+	if !errors.Is(err, ErrAuthentication) {
+		t.Fatalf("wrong key: want ErrAuthentication in chain, got %v", err)
+	}
+}
+
+func TestTamperedFrameReturnsErrAuthentication(t *testing.T) {
+	key, _ := GenerateKey()
+	var buf bytes.Buffer
+	w, _ := NewWriter(&buf, key)
+	_, _ = w.Write([]byte("original content\n"))
+
+	ciphertext := buf.Bytes()
+	tampered := make([]byte, len(ciphertext))
+	copy(tampered, ciphertext)
+	// Flip a byte after the magic prefix to simulate tampering.
+	tampered[len(Magic)+4] ^= 0xFF
+
+	r := bytes.NewReader(tampered)
+	magic := make([]byte, len(Magic))
+	_, _ = io.ReadFull(r, magic)
+	dr, _ := NewReader(r, key)
+
+	_, err := io.ReadAll(dr)
+	if err == nil {
+		t.Fatal("tampered frame: expected ErrAuthentication, got nil")
+	}
+	if !errors.Is(err, ErrAuthentication) {
+		t.Fatalf("tampered frame: want ErrAuthentication in chain, got %v", err)
 	}
 }

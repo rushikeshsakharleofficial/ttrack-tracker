@@ -3,6 +3,7 @@ package record
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -127,8 +128,12 @@ func TestRunPipeStdinExitsCleanly(t *testing.T) {
 	os.Stdout = origStdout
 	pr.Close()
 
+	// Run may return an ExitCodeError when the child is killed by SIGHUP from
+	// PTY cleanup (128+1=129). Internal recorder errors are not ExitCodeErrors.
 	if runErr != nil {
-		t.Fatalf("Run returned error: %v", runErr)
+		if _, ok := runErr.(*ExitCodeError); !ok {
+			t.Fatalf("Run returned internal recorder error: %v", runErr)
+		}
 	}
 
 	data, err := os.ReadFile(outPath)
@@ -139,6 +144,49 @@ func TestRunPipeStdinExitsCleanly(t *testing.T) {
 	// appear somewhere in the event data.
 	if !strings.Contains(string(data), "ok") {
 		t.Errorf("output file does not contain expected echo output; content: %q", string(data))
+	}
+}
+
+func TestExitCodeErrorNilOnNil(t *testing.T) {
+	if err := exitCodeError(nil); err != nil {
+		t.Fatalf("exitCodeError(nil) = %v, want nil", err)
+	}
+}
+
+func TestExitCodeErrorPassesThroughNonExitError(t *testing.T) {
+	sentinel := fmt.Errorf("internal recorder failure")
+	if got := exitCodeError(sentinel); got != sentinel {
+		t.Fatalf("non-exit error should pass through, got %v", got)
+	}
+}
+
+func TestExitCodeErrorExtractsCode(t *testing.T) {
+	cmd := exec.Command("/bin/sh", "-c", "exit 42")
+	err := cmd.Run()
+	got := exitCodeError(err)
+	if got == nil {
+		t.Fatal("expected ExitCodeError, got nil")
+	}
+	ec, ok := got.(*ExitCodeError)
+	if !ok {
+		t.Fatalf("exitCodeError(%v) = %T, want *ExitCodeError", err, got)
+	}
+	if ec.Code != 42 {
+		t.Errorf("ExitCodeError.Code = %d, want 42", ec.Code)
+	}
+}
+
+func TestExitCodeErrorSignalIs128PlusSig(t *testing.T) {
+	// SIGKILL = 9, so we expect 128+9 = 137.
+	cmd := exec.Command("/bin/sh", "-c", "kill -9 $$")
+	err := cmd.Run()
+	got := exitCodeError(err)
+	ec, ok := got.(*ExitCodeError)
+	if !ok {
+		t.Fatalf("expected *ExitCodeError for signal-killed process, got %T: %v", got, got)
+	}
+	if ec.Code != 137 {
+		t.Errorf("signal-killed ExitCodeError.Code = %d, want 137 (128+SIGKILL)", ec.Code)
 	}
 }
 

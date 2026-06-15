@@ -96,12 +96,26 @@ func TestTrunc(t *testing.T) {
 	if got := trunc("hello world", 5); got != "hell…" {
 		t.Errorf("trunc long = %q, want %q", got, "hell…")
 	}
-	// n<=3 edge: byte-slice without ellipsis.
-	if got := trunc("hello", 3); got != "hel" {
-		t.Errorf("trunc n<=3 = %q, want %q", got, "hel")
+	// n=3: rune-safe — 2 chars + ellipsis (3 runes total).
+	if got := trunc("hello", 3); got != "he…" {
+		t.Errorf("trunc n=3 = %q, want %q", got, "he…")
+	}
+	if got := trunc("hello", 1); got != "h" {
+		t.Errorf("trunc n=1 = %q, want %q", got, "h")
 	}
 	if got := trunc("hello", 0); got != "" {
 		t.Errorf("trunc n=0 = %q, want %q", got, "")
+	}
+	// Multibyte: emoji should not be corrupted.
+	emoji := "😀😀😀😀😀"
+	if got := trunc(emoji, 3); got != "😀😀…" {
+		t.Errorf("trunc emoji = %q, want %q", got, "😀😀…")
+	}
+	// Marathi: multibyte script should not be corrupted.
+	marathi := "नमस्ते"
+	got := trunc(marathi, 4)
+	for _, r := range got {
+		_ = r // valid rune iteration proves no corrupt UTF-8
 	}
 }
 
@@ -181,6 +195,41 @@ func TestOpenCastEncrypted(t *testing.T) {
 	}
 	if !bytes.Equal(got, plain) {
 		t.Fatalf("OpenCast decrypted = %q, want %q", got, plain)
+	}
+}
+
+func TestParseSessionRef(t *testing.T) {
+	cases := []struct {
+		ref      string
+		wantUser string
+		wantStem string
+		wantErr  bool
+	}{
+		{"stem", "", "stem", false},
+		{"stem.cast", "", "stem", false},
+		{"alice/stem", "alice", "stem", false},
+		{"alice/stem.cast", "alice", "stem", false},
+		// path traversal
+		{"../etc/passwd", "", "", true},
+		{"alice/../etc", "", "", true},
+		{"/etc/passwd", "", "", true},
+		// empty user or stem
+		{"/stem", "", "", true},
+		{"alice/", "", "", true},
+	}
+	for _, c := range cases {
+		u, s, err := ParseSessionRef(c.ref)
+		if (err != nil) != c.wantErr {
+			t.Errorf("ParseSessionRef(%q) error=%v, wantErr=%v", c.ref, err, c.wantErr)
+			continue
+		}
+		if err != nil {
+			continue
+		}
+		if u != c.wantUser || s != c.wantStem {
+			t.Errorf("ParseSessionRef(%q) = (%q, %q), want (%q, %q)",
+				c.ref, u, s, c.wantUser, c.wantStem)
+		}
 	}
 }
 

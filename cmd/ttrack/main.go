@@ -163,6 +163,9 @@ func main() {
 	}
 
 	if err != nil {
+		if ec, ok := err.(*record.ExitCodeError); ok {
+			os.Exit(ec.Code)
+		}
 		fmt.Fprintln(os.Stderr, "ttrack:", err)
 		os.Exit(1)
 	}
@@ -435,6 +438,7 @@ func runConfigCheck() int {
 	}
 	fmt.Printf("%-22s = %.3gs\n", "dial_timeout_sec", cfg.DialTimeout.Seconds())
 	fmt.Printf("%-22s = %dms\n", "eof_grace_ms", cfg.EOFGrace.Milliseconds())
+	fmt.Printf("%-22s = %d\n", "session_cap", cfg.SessionCap)
 	fmt.Printf("%-22s = %d\n", "ansible_output_cap", cfg.AnsibleOutputCap)
 	fmt.Printf("%-22s = %d\n", "scroll_buffer", cfg.ScrollBuffer)
 	fmt.Printf("%-22s = %d  (0=off 1=error 2=warn 3=info 4=debug 5=trace)\n", "log_level", cfg.LogLevel)
@@ -455,6 +459,7 @@ func runConfigCheck() int {
 		{"TTRACK_KEY_FILE", os.Getenv("TTRACK_KEY_FILE")},
 		{"TTRACK_DIAL_TIMEOUT_SEC", os.Getenv("TTRACK_DIAL_TIMEOUT_SEC")},
 		{"TTRACK_EOF_GRACE_MS", os.Getenv("TTRACK_EOF_GRACE_MS")},
+		{"TTRACK_SESSION_CAP", os.Getenv("TTRACK_SESSION_CAP")},
 		{"TTRACK_ANSIBLE_OUTPUT_CAP", os.Getenv("TTRACK_ANSIBLE_OUTPUT_CAP")},
 		{"TTRACK_SCROLL_BUFFER", os.Getenv("TTRACK_SCROLL_BUFFER")},
 		{"TTRACK_LOG_LEVEL", os.Getenv("TTRACK_LOG_LEVEL")},

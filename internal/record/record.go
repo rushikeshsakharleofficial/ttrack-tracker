@@ -46,7 +46,7 @@ func openSink(out string) (io.WriteCloser, string, error) {
 		}
 		path = p
 	}
-	f, err := os.Create(path)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 	if err != nil {
 		return nil, "", err
 	}
@@ -144,11 +144,45 @@ func Run(args []string) error {
 		fmt.Fprintf(os.Stderr, "\r\nttrack: session saved to %s\n", dest)
 	}
 
-	// Surface the child's exit code without treating it as a ttrack error.
-	if ee, ok := waitErr.(*exec.ExitError); ok {
-		_ = ee
+	return exitCodeError(waitErr)
+}
+
+// ExitCodeError carries the child process exit code so callers can propagate
+// it via os.Exit rather than treating it as a recorder failure.
+type ExitCodeError struct{ Code int }
+
+func (e *ExitCodeError) Error() string { return fmt.Sprintf("exit status %d", e.Code) }
+
+// exitCodeError converts cmd.Wait's result to an ExitCodeError when the child
+// exited with a non-zero status or was killed by a signal. Returns nil on
+// success. Internal recorder errors are returned as-is.
+func exitCodeError(err error) error {
+	if err == nil {
+		return nil
 	}
-	return nil
+	ee, ok := err.(*exec.ExitError)
+	if !ok {
+		return err
+	}
+	if ee.ProcessState == nil {
+		return &ExitCodeError{Code: 1}
+	}
+	ws, ok := ee.ProcessState.Sys().(syscall.WaitStatus)
+	if !ok {
+		return &ExitCodeError{Code: 1}
+	}
+	if ws.Exited() {
+		code := ws.ExitStatus()
+		if code == 0 {
+			return nil
+		}
+		return &ExitCodeError{Code: code}
+	}
+	// Signal termination: 128 + signal number is the POSIX convention.
+	if ws.Signaled() {
+		return &ExitCodeError{Code: 128 + int(ws.Signal())}
+	}
+	return &ExitCodeError{Code: 1}
 }
 
 // buildHeader builds the cast header, using the current terminal size if available.
@@ -163,9 +197,44 @@ func buildHeader(cmdArgs []string, shell string) cast.Header {
 		Width:     width,
 		Height:    height,
 		Timestamp: time.Now().Unix(),
-		Command:   strings.Join(cmdArgs, " "),
+		Command:   displayQuote(cmdArgs),
 		Env:       map[string]string{"SHELL": shell, "TERM": os.Getenv("TERM")},
 	}
+}
+
+// displayQuote returns a human-readable, unambiguous command string for the
+// cast header. Arguments containing spaces, quotes, or shell metacharacters
+// are single-quoted. This is display only — never passed to a shell.
+func displayQuote(args []string) string {
+	quoted := make([]string, len(args))
+	for i, a := range args {
+		if needsQuoting(a) {
+			// POSIX single-quote: replace ' with '\'' inside the string.
+			quoted[i] = "'" + strings.ReplaceAll(a, "'", `'\''`) + "'"
+		} else {
+			quoted[i] = a
+		}
+	}
+	return strings.Join(quoted, " ")
+}
+
+// needsQuoting reports whether arg contains characters that require quoting
+// to avoid ambiguity in a shell display context.
+func needsQuoting(arg string) bool {
+	if arg == "" {
+		return true
+	}
+	for _, c := range arg {
+		switch {
+		case c >= 'a' && c <= 'z':
+		case c >= 'A' && c <= 'Z':
+		case c >= '0' && c <= '9':
+		case c == '-' || c == '_' || c == '.' || c == '/' || c == ':' || c == '@' || c == '=':
+		default:
+			return true
+		}
+	}
+	return false
 }
 
 // watchResize forwards SIGWINCH to the PTY and syncs the initial size.

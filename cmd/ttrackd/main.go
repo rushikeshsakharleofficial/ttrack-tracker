@@ -32,15 +32,14 @@ func main() {
 	signal.Notify(sighup, syscall.SIGHUP)
 	go func() {
 		for range sighup {
-			if err := logger.Reopen(cfg.LogFile); err != nil {
+			// Parse fresh config first so Reopen uses the new log_file path.
+			nc := config.Parse()
+			if err := logger.Reopen(nc.LogFile); err != nil {
 				logger.Warnf("ttrackd: reopen log: %v", err)
 			} else {
 				logger.Infof("ttrackd: log file reopened (SIGHUP)")
 			}
-			// Re-parse config without touching the Load() singleton and hand the
-			// fresh values to the daemon. A full channel means a prior reload is
-			// still pending — drop this one rather than block the signal handler.
-			nc := config.Parse()
+			// Hand the fresh config to the daemon. Drop if a prior reload is pending.
 			select {
 			case reload <- nc:
 			default:

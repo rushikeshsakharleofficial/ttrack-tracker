@@ -19,6 +19,10 @@ func Run(args []string) error {
 	fs := flag.NewFlagSet("init", flag.ContinueOnError)
 	resetPw := fs.Bool("reset-password", false, "change the playback password (requires current password)")
 	clearPw := fs.Bool("clear-password", false, "remove playback password protection (requires current password)")
+	enableSSH := fs.Bool("enable-ssh-forcecommand", false, "install sshd ForceCommand drop-in for non-interactive SSH recording (root)")
+	disableSSH := fs.Bool("disable-ssh-forcecommand", false, "remove sshd ForceCommand drop-in (root)")
+	enableAuto := fs.Bool("enable-autorec", false, "install interactive login auto-record hook in /etc/profile.d (root)")
+	disableAuto := fs.Bool("disable-autorec", false, "remove interactive login auto-record hook from /etc/profile.d (root)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -27,6 +31,14 @@ func Run(args []string) error {
 		return cmdResetPassword()
 	case *clearPw:
 		return cmdClearPassword()
+	case *enableSSH:
+		return cmdSSHForceCommand(true)
+	case *disableSSH:
+		return cmdSSHForceCommand(false)
+	case *enableAuto:
+		return cmdAutoRec(true)
+	case *disableAuto:
+		return cmdAutoRec(false)
 	default:
 		return wizard()
 	}
@@ -180,4 +192,62 @@ func promptSetNewPassword() error {
 
 func printStep(n, total int, label, status string) {
 	fmt.Fprintf(os.Stderr, "[%d/%d] %-44s %s\n", n, total, label, status)
+}
+
+const (
+	sshdDropinDir  = "/etc/ssh/sshd_config.d"
+	sshdDropinFile = "/etc/ssh/sshd_config.d/zz-ttrack.conf"
+	sshdDropinBody = "# Installed by ttrack init --enable-ssh-forcecommand.\n" +
+		"# Remove with: sudo ttrack init --disable-ssh-forcecommand\n" +
+		"# The wrapper is fail-open: scp/sftp/rsync pass through untouched.\n" +
+		"ForceCommand /usr/libexec/ttrack-ssh-wrap\n"
+
+	autorecDest = "/etc/profile.d/ttrack-autorec.sh"
+	autorecSrc  = "/usr/share/doc/ttrack/ttrack-autorec.sh.example"
+)
+
+func cmdSSHForceCommand(enable bool) error {
+	if os.Getuid() != 0 {
+		return errors.New("--enable/disable-ssh-forcecommand requires root")
+	}
+	if !enable {
+		if err := os.Remove(sshdDropinFile); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("remove %s: %w", sshdDropinFile, err)
+		}
+		fmt.Fprintln(os.Stderr, "ttrack: SSH ForceCommand removed. Reload sshd to apply.")
+		return nil
+	}
+	if _, err := os.Stat(sshdDropinDir); os.IsNotExist(err) {
+		return fmt.Errorf("%s does not exist — sshd on this system may not support drop-ins", sshdDropinDir)
+	}
+	if err := os.WriteFile(sshdDropinFile, []byte(sshdDropinBody), 0o644); err != nil {
+		return fmt.Errorf("write %s: %w", sshdDropinFile, err)
+	}
+	fmt.Fprintln(os.Stderr, "ttrack: SSH ForceCommand installed. Reload sshd to apply:")
+	fmt.Fprintln(os.Stderr, "  sudo systemctl reload ssh || sudo systemctl reload sshd")
+	fmt.Fprintln(os.Stderr, "Disable with: sudo ttrack init --disable-ssh-forcecommand")
+	return nil
+}
+
+func cmdAutoRec(enable bool) error {
+	if os.Getuid() != 0 {
+		return errors.New("--enable/disable-autorec requires root")
+	}
+	if !enable {
+		if err := os.Remove(autorecDest); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("remove %s: %w", autorecDest, err)
+		}
+		fmt.Fprintln(os.Stderr, "ttrack: interactive auto-record disabled.")
+		return nil
+	}
+	src, err := os.ReadFile(autorecSrc)
+	if err != nil {
+		return fmt.Errorf("read example hook %s: %w", autorecSrc, err)
+	}
+	if err := os.WriteFile(autorecDest, src, 0o644); err != nil {
+		return fmt.Errorf("write %s: %w", autorecDest, err)
+	}
+	fmt.Fprintln(os.Stderr, "ttrack: interactive auto-record enabled (new login shells only).")
+	fmt.Fprintln(os.Stderr, "Disable with: sudo ttrack init --disable-autorec")
+	return nil
 }
