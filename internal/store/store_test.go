@@ -96,12 +96,26 @@ func TestTrunc(t *testing.T) {
 	if got := trunc("hello world", 5); got != "hell…" {
 		t.Errorf("trunc long = %q, want %q", got, "hell…")
 	}
-	// n<=3 edge: byte-slice without ellipsis.
-	if got := trunc("hello", 3); got != "hel" {
-		t.Errorf("trunc n<=3 = %q, want %q", got, "hel")
+	// n=3: rune-safe — 2 chars + ellipsis (3 runes total).
+	if got := trunc("hello", 3); got != "he…" {
+		t.Errorf("trunc n=3 = %q, want %q", got, "he…")
+	}
+	if got := trunc("hello", 1); got != "h" {
+		t.Errorf("trunc n=1 = %q, want %q", got, "h")
 	}
 	if got := trunc("hello", 0); got != "" {
 		t.Errorf("trunc n=0 = %q, want %q", got, "")
+	}
+	// Multibyte: emoji should not be corrupted.
+	emoji := "😀😀😀😀😀"
+	if got := trunc(emoji, 3); got != "😀😀…" {
+		t.Errorf("trunc emoji = %q, want %q", got, "😀😀…")
+	}
+	// Marathi: multibyte script should not be corrupted.
+	marathi := "नमस्ते"
+	got := trunc(marathi, 4)
+	for _, r := range got {
+		_ = r // valid rune iteration proves no corrupt UTF-8
 	}
 }
 

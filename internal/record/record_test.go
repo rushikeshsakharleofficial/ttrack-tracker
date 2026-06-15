@@ -127,8 +127,12 @@ func TestRunPipeStdinExitsCleanly(t *testing.T) {
 	os.Stdout = origStdout
 	pr.Close()
 
+	// Run may return an ExitCodeError when the child is killed by SIGHUP from
+	// PTY cleanup (128+1=129). Internal recorder errors are not ExitCodeErrors.
 	if runErr != nil {
-		t.Fatalf("Run returned error: %v", runErr)
+		if _, ok := runErr.(*ExitCodeError); !ok {
+			t.Fatalf("Run returned internal recorder error: %v", runErr)
+		}
 	}
 
 	data, err := os.ReadFile(outPath)

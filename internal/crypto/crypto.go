@@ -91,9 +91,10 @@ func (e *encWriter) Write(p []byte) (int, error) {
 }
 
 type decReader struct {
-	r   io.Reader
-	gcm cipher.AEAD
-	buf []byte
+	r        io.Reader
+	gcm      cipher.AEAD
+	buf      []byte
+	frameIdx int
 }
 
 // NewReader returns a reader yielding the decrypted plaintext stream. The
@@ -106,19 +107,25 @@ func NewReader(r io.Reader, key []byte) (io.Reader, error) {
 	return &decReader{r: r, gcm: gcm}, nil
 }
 
+// ErrAuthentication is returned when a frame's GCM authentication tag does not
+// match, indicating corruption or tampering. It is distinct from io.EOF so
+// callers can surface data integrity failures rather than silently stopping.
+var ErrAuthentication = fmt.Errorf("crypto: authentication failed — recording may be corrupt or tampered")
+
 func (d *decReader) Read(p []byte) (int, error) {
 	for len(d.buf) == 0 {
 		var lenbuf [4]byte
 		if _, err := io.ReadFull(d.r, lenbuf[:]); err != nil {
-			return 0, io.EOF // clean end or truncated length: stop
+			return 0, io.EOF // clean end or truncated trailing length: stop
 		}
 		flen := binary.BigEndian.Uint32(lenbuf[:])
 		if int(flen) < d.gcm.NonceSize() {
+			// Frame length smaller than a nonce: file is truncated at this frame.
 			return 0, io.EOF
 		}
 		const maxFrameSize = 1 << 20 // 1 MiB — largest expected PTY write chunk
 		if flen > maxFrameSize {
-			return 0, io.ErrUnexpectedEOF // corrupt or truncated file
+			return 0, fmt.Errorf("crypto: frame %d: length %d exceeds maximum %d — corrupt file", d.frameIdx, flen, maxFrameSize)
 		}
 		frame := make([]byte, flen)
 		if _, err := io.ReadFull(d.r, frame); err != nil {
@@ -127,8 +134,10 @@ func (d *decReader) Read(p []byte) (int, error) {
 		ns := d.gcm.NonceSize()
 		pt, err := d.gcm.Open(nil, frame[:ns], frame[ns:], nil)
 		if err != nil {
-			return 0, io.EOF // corrupt frame: stop
+			// A complete frame that fails authentication is corruption or tampering.
+			return 0, fmt.Errorf("crypto: frame %d: %w", d.frameIdx, ErrAuthentication)
 		}
+		d.frameIdx++
 		d.buf = pt
 	}
 	n := copy(p, d.buf)

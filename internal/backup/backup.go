@@ -19,7 +19,55 @@ var runCommand = func(ctx context.Context, name string, args ...string) error {
 	cmd := exec.CommandContext(ctx, name, args...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("%s %s: %w\noutput: %s", name, strings.Join(args, " "), err, out)
+		// Omit args from error to avoid leaking credentials in S3/GCS URLs.
+		return fmt.Errorf("%s: command failed: %w\noutput: %s", name, err, redactOutput(out))
+	}
+	return nil
+}
+
+// redactOutput trims combined output and removes lines that look like credentials.
+func redactOutput(out []byte) string {
+	const maxLen = 512
+	s := strings.TrimSpace(string(out))
+	if len(s) > maxLen {
+		s = s[:maxLen] + "...[truncated]"
+	}
+	var lines []string
+	for _, line := range strings.Split(s, "\n") {
+		if credentialLike(line) {
+			lines = append(lines, "[redacted]")
+		} else {
+			lines = append(lines, line)
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+func credentialLike(line string) bool {
+	lower := strings.ToLower(line)
+	for _, kw := range []string{"password", "token", "secret", "key=", "auth=", "aws_secret", "credential"} {
+		if strings.Contains(lower, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+// validateTarget checks that backup_target is appropriate for the given type.
+func validateTarget(backupType, target string) error {
+	switch backupType {
+	case "bucket_aws":
+		if !strings.HasPrefix(target, "s3://") {
+			return fmt.Errorf("backup_target for bucket_aws must start with s3:// (got %q)", target)
+		}
+	case "bucket_gcp":
+		if !strings.HasPrefix(target, "gs://") {
+			return fmt.Errorf("backup_target for bucket_gcp must start with gs:// (got %q)", target)
+		}
+	case "rsync":
+		if !strings.HasPrefix(target, "/") && !strings.HasPrefix(target, "//") && !strings.Contains(target, ":") {
+			return fmt.Errorf("backup_target for rsync must be an absolute path or remote host:path (got %q)", target)
+		}
 	}
 	return nil
 }
@@ -32,6 +80,9 @@ func buildBackupArgs(cfg *config.Config) (name string, args []string, err error)
 	}
 	if cfg.BackupTarget == "" {
 		return "", nil, errors.New("backup misconfigured: backup_target is empty")
+	}
+	if err := validateTarget(cfg.BackupType, cfg.BackupTarget); err != nil {
+		return "", nil, err
 	}
 	switch cfg.BackupType {
 	case "bucket_aws":

@@ -235,17 +235,29 @@ jobs:
         if: github.ref == 'refs/heads/main'
         env:
           JUMP_SERVER_KEY: ${{ secrets.JUMP_SERVER_KEY }}
+          JUMP_SERVER_KNOWN_HOST: ${{ secrets.JUMP_SERVER_KNOWN_HOST }}
         run: |
           mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
           printf '%s\n' "$JUMP_SERVER_KEY" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H 89.167.44.42 >> ~/.ssh/known_hosts 2>/dev/null
+          # Prefer a pinned known_hosts entry (stored in the JUMP_SERVER_KNOWN_HOST
+          # secret as a hashed known_hosts line) over a live keyscan so the host
+          # key is verified even if DNS is poisoned or the server is replaced.
+          # To obtain the value: ssh-keyscan -H 89.167.44.42
+          if [ -n "$JUMP_SERVER_KNOWN_HOST" ]; then
+            printf '%s\n' "$JUMP_SERVER_KNOWN_HOST" >> ~/.ssh/known_hosts
+          else
+            ssh-keyscan -H 89.167.44.42 >> ~/.ssh/known_hosts 2>/dev/null
+          fi
+          chmod 600 ~/.ssh/known_hosts
 
       - name: Deploy to Jump Server
         if: github.ref == 'refs/heads/main'
         run: |
           DEB=$(ls release/*.deb | head -1)
-          scp -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no \
+          # StrictHostKeyChecking=yes enforces the known_hosts entry populated above.
+          scp -i ~/.ssh/id_rsa -o StrictHostKeyChecking=yes -o BatchMode=yes \
               "$DEB" rushikesh.sakharle@89.167.44.42:/tmp/ttrack-latest.deb
 
           # Write deploy script to a file and scp it — avoids stdin pipe
@@ -265,8 +277,8 @@ jobs:
             '    sudo DEBIAN_FRONTEND=noninteractive dpkg -i --force-confold "$DEB" && sudo rm -f /usr/local/man/man1/ttrack.1 && echo updated' \
             'fi' > /tmp/ttrack-deploy.sh
 
-          scp -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no \
+          scp -i ~/.ssh/id_rsa -o StrictHostKeyChecking=yes -o BatchMode=yes \
               /tmp/ttrack-deploy.sh rushikesh.sakharle@89.167.44.42:/tmp/ttrack-deploy.sh
 
-          ssh -T -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -o BatchMode=yes \
+          ssh -T -i ~/.ssh/id_rsa -o StrictHostKeyChecking=yes -o BatchMode=yes \
               rushikesh.sakharle@89.167.44.42 'bash /tmp/ttrack-deploy.sh'

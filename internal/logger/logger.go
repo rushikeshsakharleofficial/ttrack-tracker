@@ -19,6 +19,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 )
 
@@ -36,8 +37,16 @@ const (
 
 var current atomic.Int32
 
-// closeCurrent holds the closer for the active log file so Reopen can swap it.
-var closeCurrent func() error = func() error { return nil }
+// baseWriter is the log.Writer() captured on the first TeeToFile call, before
+// any file tee is installed. Subsequent Reopen calls always tee from this base
+// so MultiWriters never stack. nil until the first TeeToFile call.
+var baseWriter io.Writer
+
+// currentFile is the currently open log file (nil when file logging is off).
+var currentFile *os.File
+
+// logMu guards baseWriter, currentFile, and log.SetOutput calls.
+var logMu sync.Mutex
 
 func init() {
 	current.Store(int32(LevelInfo))
@@ -53,9 +62,9 @@ func Set(l Level) { current.Store(int32(l)) }
 // Get returns the current log level.
 func Get() Level { return Level(current.Load()) }
 
-// TeeToFile sends future log output to the existing logger output and path.
-// Parent directories are created when missing. The returned function restores
-// the previous output and closes the file.
+// TeeToFile sends future log output to the base writer and path.
+// Parent directories are created when missing. The returned function disables
+// file logging and closes the file.
 func TeeToFile(path string) (func() error, error) {
 	if path == "" {
 		return func() error { return nil }, nil
@@ -75,28 +84,71 @@ func TeeToFile(path string) (func() error, error) {
 		_ = f.Close()
 		return nil, err
 	}
-	prev := log.Writer()
-	log.SetOutput(io.MultiWriter(prev, f))
-	restore := func() error {
-		log.SetOutput(prev)
-		return f.Close()
+	logMu.Lock()
+	if baseWriter == nil {
+		baseWriter = log.Writer() // capture once, before any file tee
 	}
-	closeCurrent = restore // save so Reopen can swap
-	return restore, nil
+	log.SetOutput(io.MultiWriter(baseWriter, f))
+	oldFile := currentFile
+	currentFile = f
+	logMu.Unlock()
+	if oldFile != nil {
+		_ = oldFile.Close()
+	}
+	return func() error {
+		logMu.Lock()
+		if baseWriter != nil {
+			log.SetOutput(baseWriter)
+		}
+		cur := currentFile
+		currentFile = nil
+		logMu.Unlock()
+		if cur != nil {
+			return cur.Close()
+		}
+		return nil
+	}, nil
 }
 
-// Reopen closes and reopens the log file at path. Call on SIGHUP so logrotate
-// can rename the old file without losing future log lines.
+// Reopen closes the current log file and reopens it at path. Call on SIGHUP
+// so logrotate can rename the old file without losing future log lines.
+// An empty path disables file logging.
 func Reopen(path string) error {
 	if path == "" {
+		logMu.Lock()
+		log.SetOutput(baseWriter)
+		old := currentFile
+		currentFile = nil
+		logMu.Unlock()
+		if old != nil {
+			return old.Close()
+		}
 		return nil
 	}
-	old := closeCurrent
-	_, err := TeeToFile(path)
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		return err
+	}
+	if err := os.Chmod(dir, 0o750); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o640)
 	if err != nil {
 		return err
 	}
-	return old() // close old fd
+	if err := f.Chmod(0o640); err != nil {
+		_ = f.Close()
+		return err
+	}
+	logMu.Lock()
+	log.SetOutput(io.MultiWriter(baseWriter, f))
+	old := currentFile
+	currentFile = f
+	logMu.Unlock()
+	if old != nil {
+		return old.Close()
+	}
+	return nil
 }
 
 // Errorf logs at level ERROR (1).
