@@ -21,6 +21,7 @@ Terminal session recorder and audit tool for Linux — captures every shell sess
 ## Table of contents
 
 - [Features](#features)
+- [Architecture flow](#architecture-flow)
 - [Demo](#demo)
 - [Installation](#installation)
 - [Quick start](#quick-start)
@@ -55,6 +56,10 @@ Terminal session recorder and audit tool for Linux — captures every shell sess
 - **Fail-open**: if the daemon is down, recording falls back to a user-local file and is ingested into the central store when the daemon restarts.
 - **Bash tab-completion** for subcommands, flags, sessions, and users.
 - Ships as `rpm` and `deb` packages with a systemd unit.
+
+## Architecture flow
+
+![ttrack Architecture](docs/ttrack-architecture.svg)
 
 ## Demo
 

@@ -1,0 +1,160 @@
+<mxfile host="app.diagrams.net">
+  <diagram id="ttrack-arch" name="ttrack Architecture">
+    <mxGraphModel dx="1358" dy="831" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="827" math="0" shadow="0" sketch="1">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- Linux user shell -->
+        <mxCell id="2" parent="1"
+          style="sketch=1;rounded=1;whiteSpace=wrap;html=1;fillColor=#dfeaf7;strokeColor=#111111;strokeWidth=2;fontSize=11;fontFamily=Architects Daughter;"
+          value="&lt;b&gt;Linux user shell&lt;/b&gt;&lt;br/&gt;interactive login / command / SSH" vertex="1">
+          <mxGeometry height="55" width="220" x="380" y="40" as="geometry" />
+        </mxCell>
+
+        <!-- ttrack CLI -->
+        <mxCell id="3" parent="1"
+          style="sketch=1;rounded=1;whiteSpace=wrap;html=1;fillColor=#dfeaf7;strokeColor=#111111;strokeWidth=2;fontSize=11;fontFamily=Architects Daughter;"
+          value="&lt;b&gt;ttrack CLI&lt;/b&gt;&lt;br/&gt;cmd/ttrack" vertex="1">
+          <mxGeometry height="55" width="220" x="250" y="160" as="geometry" />
+        </mxCell>
+
+        <!-- record package -->
+        <mxCell id="4" parent="1"
+          style="sketch=1;rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e4;strokeColor=#111111;strokeWidth=2;fontSize=11;fontFamily=Architects Daughter;"
+          value="&lt;b&gt;record package&lt;/b&gt;&lt;br/&gt;PTY capture + asciinema v2 writer" vertex="1">
+          <mxGeometry height="55" width="220" x="680" y="260" as="geometry" />
+        </mxCell>
+
+        <!-- Ansible callback flow -->
+        <mxCell id="5" parent="1"
+          style="sketch=1;rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e4;strokeColor=#111111;strokeWidth=2;fontSize=11;fontFamily=Architects Daughter;"
+          value="&lt;b&gt;Ansible callback flow&lt;/b&gt;&lt;br/&gt;task/run JSON-lines" vertex="1">
+          <mxGeometry height="55" width="220" x="890" y="359" as="geometry" />
+        </mxCell>
+
+        <!-- local fallback store -->
+        <mxCell id="6" parent="1"
+          style="sketch=1;rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe9e4;strokeColor=#cc0000;strokeWidth=2;fontSize=11;fontFamily=Architects Daughter;"
+          value="&lt;b&gt;local fallback store&lt;/b&gt;&lt;br/&gt;~/.local/share/ttrack" vertex="1">
+          <mxGeometry height="55" width="220" x="20" y="395" as="geometry" />
+        </mxCell>
+
+        <!-- ttrackd root daemon -->
+        <mxCell id="7" parent="1"
+          style="sketch=1;rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e4;strokeColor=#111111;strokeWidth=2;fontSize=11;fontFamily=Architects Daughter;"
+          value="&lt;b&gt;ttrackd root daemon&lt;/b&gt;&lt;br/&gt;Unix socket collector" vertex="1">
+          <mxGeometry height="55" width="220" x="400" y="315" as="geometry" />
+        </mxCell>
+
+        <!-- audit commands -->
+        <mxCell id="8" parent="1"
+          style="sketch=1;rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e4;strokeColor=#111111;strokeWidth=2;fontSize=11;fontFamily=Architects Daughter;"
+          value="&lt;b&gt;audit commands&lt;/b&gt;&lt;br/&gt;ls / tree / search / tail / export" vertex="1">
+          <mxGeometry height="55" width="220" x="20" y="515" as="geometry" />
+        </mxCell>
+
+        <!-- crypto package -->
+        <mxCell id="9" parent="1"
+          style="sketch=1;rounded=1;whiteSpace=wrap;html=1;fillColor=#fff0cf;strokeColor=#111111;strokeWidth=2;fontSize=11;fontFamily=Architects Daughter;"
+          value="&lt;b&gt;crypto package&lt;/b&gt;&lt;br/&gt;AES-256-GCM frames" vertex="1">
+          <mxGeometry height="55" width="220" x="430" y="450" as="geometry" />
+        </mxCell>
+
+        <!-- backup worker -->
+        <mxCell id="10" parent="1"
+          style="sketch=1;rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e4;strokeColor=#111111;strokeWidth=2;fontSize=11;fontFamily=Architects Daughter;"
+          value="&lt;b&gt;backup worker&lt;/b&gt;&lt;br/&gt;S3 / GCS / rsync" vertex="1">
+          <mxGeometry height="55" width="220" x="700" y="515" as="geometry" />
+        </mxCell>
+
+        <!-- player -->
+        <mxCell id="11" parent="1"
+          style="sketch=1;rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e4;strokeColor=#111111;strokeWidth=2;fontSize=11;fontFamily=Architects Daughter;"
+          value="&lt;b&gt;player&lt;/b&gt;&lt;br/&gt;snapshot-bounded replay" vertex="1">
+          <mxGeometry height="55" width="220" x="190" y="720" as="geometry" />
+        </mxCell>
+
+        <!-- central root-only store -->
+        <mxCell id="12" parent="1"
+          style="sketch=1;rounded=1;whiteSpace=wrap;html=1;fillColor=#f5e9ff;strokeColor=#111111;strokeWidth=2;fontSize=11;fontFamily=Architects Daughter;"
+          value="&lt;b&gt;central root-only store&lt;/b&gt;&lt;br/&gt;/var/lib/ttrack" vertex="1">
+          <mxGeometry height="55" width="220" x="570" y="680" as="geometry" />
+        </mxCell>
+
+        <!-- ── Edges ── -->
+
+        <mxCell id="13" edge="1" parent="1" source="2" target="3"
+          style="sketch=1;edgeStyle=orthogonalEdgeStyle;strokeColor=#111111;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="14" edge="1" parent="1" source="3" target="4"
+          style="sketch=1;edgeStyle=orthogonalEdgeStyle;strokeColor=#111111;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="15" value="REC over /run/ttrackd.sock" edge="1" parent="1" source="4" target="7"
+          style="sketch=1;edgeStyle=orthogonalEdgeStyle;strokeColor=#111111;strokeWidth=2;fontSize=10;fontFamily=Architects Daughter;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="16" value="daemon down / fail-open" edge="1" parent="1" source="4" target="6"
+          style="sketch=1;edgeStyle=orthogonalEdgeStyle;strokeColor=#cc0000;strokeWidth=2;fontSize=10;dashed=1;fontFamily=Architects Daughter;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="17" value="startup sweep" edge="1" parent="1" source="6" target="7"
+          style="sketch=1;edgeStyle=orthogonalEdgeStyle;strokeColor=#111111;strokeWidth=2;fontSize=10;fontFamily=Architects Daughter;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="18" edge="1" parent="1" source="7" target="9"
+          style="sketch=1;edgeStyle=orthogonalEdgeStyle;strokeColor=#111111;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="19" edge="1" parent="1" source="9" target="12"
+          style="sketch=1;edgeStyle=orthogonalEdgeStyle;strokeColor=#111111;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="20" edge="1" parent="1" source="3" target="8"
+          style="sketch=1;edgeStyle=orthogonalEdgeStyle;strokeColor=#111111;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="21" edge="1" parent="1" source="8" target="12"
+          style="sketch=1;edgeStyle=orthogonalEdgeStyle;strokeColor=#111111;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="22" edge="1" parent="1" source="8" target="11"
+          style="sketch=1;edgeStyle=orthogonalEdgeStyle;strokeColor=#111111;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="23" edge="1" parent="1" source="3" target="11"
+          style="sketch=1;edgeStyle=orthogonalEdgeStyle;strokeColor=#111111;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="24" edge="1" parent="1" source="11" target="12"
+          style="sketch=1;edgeStyle=orthogonalEdgeStyle;strokeColor=#111111;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="25" value="ansible-ingest / ANSIBLE runid" edge="1" parent="1" source="5" target="7"
+          style="sketch=1;edgeStyle=orthogonalEdgeStyle;strokeColor=#111111;strokeWidth=2;fontSize=10;fontFamily=Architects Daughter;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="26" edge="1" parent="1" source="7" target="10"
+          style="sketch=1;edgeStyle=orthogonalEdgeStyle;strokeColor=#111111;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

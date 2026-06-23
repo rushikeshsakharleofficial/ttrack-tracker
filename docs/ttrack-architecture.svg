@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1140 810"
+     font-family="'Comic Sans MS','Chalkboard SE',cursive" font-size="11">
+  <defs>
+    <filter id="sk" x="-4%" y="-4%" width="108%" height="108%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.025" numOctaves="4" seed="9" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="2"/>
+    </filter>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0 0L10 5L0 10z" fill="#111"/>
+    </marker>
+    <marker id="arr-r" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0 0L10 5L0 10z" fill="#c00"/>
+    </marker>
+  </defs>
+
+  <!-- white background -->
+  <rect width="1140" height="810" fill="#fff"/>
+
+  <!-- title -->
+  <text x="570" y="22" text-anchor="middle" font-size="15" font-weight="bold" fill="#111">
+    ttrack — Architecture Flow
+  </text>
+
+  <!-- ── node shapes (sketched) ── -->
+  <g filter="url(#sk)" stroke-width="2" stroke-linejoin="round">
+    <rect x="380" y="40"  width="220" height="55" rx="8" fill="#dfeaf7" stroke="#111"/>
+    <rect x="250" y="160" width="220" height="55" rx="8" fill="#dfeaf7" stroke="#111"/>
+    <rect x="680" y="260" width="220" height="55" rx="8" fill="#e8f5e4" stroke="#111"/>
+    <rect x="890" y="359" width="220" height="55" rx="8" fill="#e8f5e4" stroke="#111"/>
+    <rect x="20"  y="395" width="220" height="55" rx="8" fill="#ffe9e4" stroke="#c00"/>
+    <rect x="400" y="315" width="220" height="55" rx="8" fill="#e8f5e4" stroke="#111"/>
+    <rect x="20"  y="515" width="220" height="55" rx="8" fill="#e8f5e4" stroke="#111"/>
+    <rect x="430" y="450" width="220" height="55" rx="8" fill="#fff0cf" stroke="#111"/>
+    <rect x="700" y="515" width="220" height="55" rx="8" fill="#e8f5e4" stroke="#111"/>
+    <rect x="190" y="720" width="220" height="55" rx="8" fill="#e8f5e4" stroke="#111"/>
+    <rect x="570" y="660" width="220" height="55" rx="8" fill="#f5e9ff" stroke="#111"/>
+  </g>
+
+  <!-- ── edges (sketched) ── -->
+  <g filter="url(#sk)" fill="none" stroke="#111" stroke-width="2">
+    <!-- User → CLI -->
+    <polyline marker-end="url(#arr)" points="490,95 490,127 360,127 360,160"/>
+    <!-- CLI → record -->
+    <polyline marker-end="url(#arr)" points="470,187 575,187 575,287 680,287"/>
+    <!-- record → daemon  (socket) -->
+    <polyline marker-end="url(#arr)" points="680,287 650,287 650,342 620,342"/>
+    <!-- local → daemon  (startup sweep) -->
+    <polyline marker-end="url(#arr)" points="240,422 320,422 320,342 400,342"/>
+    <!-- daemon → crypto -->
+    <polyline marker-end="url(#arr)" points="510,370 510,410 540,410 540,450"/>
+    <!-- crypto → store -->
+    <polyline marker-end="url(#arr)" points="540,505 540,610 680,610 680,660"/>
+    <!-- CLI → audit -->
+    <polyline marker-end="url(#arr)" points="250,187 5,187 5,542 20,542"/>
+    <!-- audit → store -->
+    <polyline marker-end="url(#arr)" points="240,542 540,542 540,687 570,687"/>
+    <!-- audit → player -->
+    <polyline marker-end="url(#arr)" points="130,570 130,747 190,747"/>
+    <!-- CLI → player -->
+    <polyline marker-end="url(#arr)" points="250,187 14,187 14,747 190,747"/>
+    <!-- player → store -->
+    <polyline marker-end="url(#arr)" points="410,747 490,747 490,687 570,687"/>
+    <!-- Ansible → daemon -->
+    <polyline marker-end="url(#arr)" points="890,386 755,386 755,342 620,342"/>
+    <!-- daemon → backup -->
+    <polyline marker-end="url(#arr)" points="620,342 810,342 810,515"/>
+  </g>
+
+  <!-- record → local  (fail-open, red dashed) -->
+  <polyline filter="url(#sk)" fill="none" stroke="#c00" stroke-width="2"
+            stroke-dasharray="7,4" marker-end="url(#arr-r)"
+            points="680,287 380,287 380,422 240,422"/>
+
+  <!-- ── node labels (crisp) ── -->
+  <text x="490" y="62"   text-anchor="middle" font-weight="bold" fill="#111">Linux user shell</text>
+  <text x="490" y="78"   text-anchor="middle" font-size="10" fill="#444">interactive login / command / SSH</text>
+
+  <text x="360" y="182"  text-anchor="middle" font-weight="bold" fill="#111">ttrack CLI</text>
+  <text x="360" y="198"  text-anchor="middle" font-size="10" fill="#444">cmd/ttrack</text>
+
+  <text x="790" y="282"  text-anchor="middle" font-weight="bold" fill="#111">record package</text>
+  <text x="790" y="298"  text-anchor="middle" font-size="10" fill="#444">PTY capture + asciinema v2 writer</text>
+
+  <text x="1000" y="379" text-anchor="middle" font-weight="bold" fill="#111">Ansible callback flow</text>
+  <text x="1000" y="395" text-anchor="middle" font-size="10" fill="#444">task/run JSON-lines</text>
+
+  <text x="130" y="417"  text-anchor="middle" font-weight="bold" fill="#111">local fallback store</text>
+  <text x="130" y="433"  text-anchor="middle" font-size="10" fill="#444">~/.local/share/ttrack</text>
+
+  <text x="510" y="337"  text-anchor="middle" font-weight="bold" fill="#111">ttrackd root daemon</text>
+  <text x="510" y="353"  text-anchor="middle" font-size="10" fill="#444">Unix socket collector</text>
+
+  <text x="130" y="537"  text-anchor="middle" font-weight="bold" fill="#111">audit commands</text>
+  <text x="130" y="553"  text-anchor="middle" font-size="10" fill="#444">ls / tree / search / tail / export</text>
+
+  <text x="540" y="472"  text-anchor="middle" font-weight="bold" fill="#111">crypto package</text>
+  <text x="540" y="488"  text-anchor="middle" font-size="10" fill="#444">AES-256-GCM frames</text>
+
+  <text x="810" y="537"  text-anchor="middle" font-weight="bold" fill="#111">backup worker</text>
+  <text x="810" y="553"  text-anchor="middle" font-size="10" fill="#444">S3 / GCS / rsync</text>
+
+  <text x="300" y="742"  text-anchor="middle" font-weight="bold" fill="#111">player</text>
+  <text x="300" y="758"  text-anchor="middle" font-size="10" fill="#444">snapshot-bounded replay</text>
+
+  <text x="680" y="682"  text-anchor="middle" font-weight="bold" fill="#111">central root-only store</text>
+  <text x="680" y="698"  text-anchor="middle" font-size="10" fill="#444">/var/lib/ttrack</text>
+
+  <!-- ── edge labels ── -->
+  <text x="663" y="280" text-anchor="middle" font-size="9" fill="#555">/run/ttrackd.sock</text>
+  <text x="530" y="280" text-anchor="middle" font-size="9" fill="#c00">daemon down / fail-open</text>
+  <text x="296" y="398" text-anchor="middle" font-size="9" fill="#555">startup sweep</text>
+  <text x="822" y="370" text-anchor="middle" font-size="9" fill="#555">ansible-ingest</text>
+
+  <!-- ── legend ── -->
+  <g transform="translate(20,790)" font-size="10" fill="#333">
+    <rect width="10" height="10" fill="#dfeaf7" stroke="#111" stroke-width="1"/>
+    <text x="14" y="10">User/CLI</text>
+    <rect x="75"  width="10" height="10" fill="#e8f5e4" stroke="#111" stroke-width="1"/>
+    <text x="89"  y="10">Process</text>
+    <rect x="150" width="10" height="10" fill="#fff0cf" stroke="#111" stroke-width="1"/>
+    <text x="164" y="10">Crypto</text>
+    <rect x="215" width="10" height="10" fill="#f5e9ff" stroke="#111" stroke-width="1"/>
+    <text x="229" y="10">Store</text>
+    <rect x="270" width="10" height="10" fill="#ffe9e4" stroke="#c00" stroke-width="1"/>
+    <text x="284" y="10">Fallback</text>
+    <line x1="340" y1="5" x2="375" y2="5" stroke="#c00" stroke-width="2" stroke-dasharray="5,3"/>
+    <text x="379" y="10" fill="#c00">fail-open path</text>
+  </g>
+</svg>
