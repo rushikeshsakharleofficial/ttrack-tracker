@@ -21,6 +21,7 @@ Terminal session recorder and audit tool for Linux — captures every shell sess
 ## Table of contents
 
 - [Features](#features)
+- [Architecture flow](#architecture-flow)
 - [Demo](#demo)
 - [Installation](#installation)
 - [Quick start](#quick-start)
@@ -55,6 +56,63 @@ Terminal session recorder and audit tool for Linux — captures every shell sess
 - **Fail-open**: if the daemon is down, recording falls back to a user-local file and is ingested into the central store when the daemon restarts.
 - **Bash tab-completion** for subcommands, flags, sessions, and users.
 - Ships as `rpm` and `deb` packages with a systemd unit.
+
+## Architecture flow
+
+```mermaid
+%%{init: {
+  "theme": "base",
+  "look": "handDrawn",
+  "flowchart": { "htmlLabels": true, "curve": "basis" },
+  "themeVariables": {
+    "fontFamily": "Comic Sans MS, Marker Felt, cursive",
+    "primaryTextColor": "#111111",
+    "lineColor": "#111111"
+  }
+}}%%
+flowchart TD
+    U["Linux user shell<br/>interactive login / command / SSH"]
+    CLI["ttrack CLI<br/>cmd/ttrack"]
+    REC["record package<br/>PTY capture + asciinema v2 writer"]
+    DAEMON["ttrackd root daemon<br/>Unix socket collector"]
+    STORE["central root-only store<br/>/var/lib/ttrack"]
+    CRYPTO["crypto package<br/>AES-256-GCM frames"]
+    AUDIT["audit commands<br/>ls / tree / search / tail / export"]
+    PLAY["player<br/>snapshot-bounded replay"]
+    ANSIBLE["Ansible callback flow<br/>task/run JSON-lines"]
+    BACKUP["backup worker<br/>S3 / GCS / rsync"]
+    LOCAL["local fallback store<br/>~/.local/share/ttrack"]
+
+    U --> CLI
+    CLI --> REC
+    REC -->|"REC over /run/ttrackd.sock"| DAEMON
+    REC -->|"daemon down<br/>fail-open"| LOCAL
+    LOCAL -->|"startup sweep"| DAEMON
+    DAEMON --> CRYPTO
+    CRYPTO --> STORE
+    CLI --> AUDIT
+    AUDIT --> STORE
+    AUDIT --> PLAY
+    CLI --> PLAY
+    PLAY --> STORE
+    ANSIBLE -->|"ansible-ingest<br/>ANSIBLE runid"| DAEMON
+    DAEMON --> BACKUP
+
+    classDef user fill:#dfeaf7,stroke:#111111,stroke-width:3px,color:#111111;
+    classDef process fill:#e8f5e4,stroke:#111111,stroke-width:3px,color:#111111;
+    classDef secure fill:#fff0cf,stroke:#111111,stroke-width:3px,color:#111111;
+    classDef store fill:#f5e9ff,stroke:#111111,stroke-width:3px,color:#111111;
+    classDef fallback fill:#ffe9e4,stroke:#111111,stroke-width:3px,color:#111111;
+
+    class U,CLI user;
+    class REC,DAEMON,AUDIT,PLAY,ANSIBLE,BACKUP process;
+    class CRYPTO secure;
+    class STORE store;
+    class LOCAL fallback;
+    linkStyle default stroke:#111111,stroke-width:3px;
+```
+
+Codebase map: `cmd/ttrack` dispatches the CLI, `internal/record` captures PTY output, `internal/cast` writes asciinema v2 JSON-lines, `internal/daemon` receives `REC`, `TAIL`, and `ANSIBLE` streams over the Unix socket, `internal/crypto` encrypts central data, `internal/store` resolves local/central paths and transparent decrypt, and `internal/audit`, `internal/play`, `internal/ansible`, and `internal/backup` provide the operator-facing read, replay, automation, and backup flows.
 
 ## Demo
 
@@ -178,7 +236,7 @@ With no command, `ttrack rec` records your `$SHELL` interactively until you `exi
 | `ttrack play [--speed N] [--idle N] <file\|id>` | Replay a recording. Auto-detects: existing local file → local play; otherwise → central store session ID (requires root). |
 | `ttrack ls` | List local recordings (`STATUS`, `FILE`, `STARTED`, `DURATION`, `COMMAND`). |
 | `ttrack ls --all` | List all users in the central store with session counts (root). |
-| `ttrack ls --user <name>` | List one user's sessions in the central store (root). |
+| `ttrack ls --user <name>` | List one user's sessions in central store (root). |
 | `ttrack --check` | Validate `/etc/ttrack/ttrack.conf` and print all resolved values. |
 | `ttrack completion bash` | Print the bash completion script. |
 | `ttrack help [command]` | Overall usage, or one command's detailed help. |
@@ -632,5 +690,4 @@ Licensed under the GNU General Public License v2.0. See [LICENSE](LICENSE).
 <div align="center">
 
 [![Star History Chart](https://api.star-history.com/svg?repos=rushikeshsakharleofficial/ttrack-tracker&type=Date)](https://star-history.com/#rushikeshsakharleofficial/ttrack-tracker&Date)
-
 </div>
