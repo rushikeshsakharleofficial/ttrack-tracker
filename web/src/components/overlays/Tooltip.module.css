@@ -1,0 +1,127 @@
+.wrapper {
+  position: relative;
+  display: inline-flex;
+}
+
+.tooltip {
+  position: absolute;
+  z-index: 900;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  opacity: 0;
+  transform: scale(0.95);
+  transition: opacity 0.15s, transform 0.15s;
+}
+
+.tooltip.visible {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* Variants */
+.variant-dark {
+  background: #111827;
+  color: #FFFFFF;
+}
+
+.variant-light {
+  background: #FFFFFF;
+  color: #374151;
+  border: 1px solid #E5E7EB;
+}
+
+.variant-primary {
+  background: #6366F1;
+  color: #FFFFFF;
+}
+
+/* Placements */
+.placement-top {
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%) scale(0.95);
+}
+.placement-top.visible {
+  transform: translateX(-50%) scale(1);
+}
+
+.placement-bottom {
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%) scale(0.95);
+}
+.placement-bottom.visible {
+  transform: translateX(-50%) scale(1);
+}
+
+.placement-left {
+  right: calc(100% + 8px);
+  top: 50%;
+  transform: translateY(-50%) scale(0.95);
+}
+.placement-left.visible {
+  transform: translateY(-50%) scale(1);
+}
+
+.placement-right {
+  left: calc(100% + 8px);
+  top: 50%;
+  transform: translateY(-50%) scale(0.95);
+}
+.placement-right.visible {
+  transform: translateY(-50%) scale(1);
+}
+
+/* Arrows */
+.arrow {
+  position: absolute;
+  width: 0;
+  height: 0;
+}
+
+.arrow-top {
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 5px solid currentColor;
+}
+
+.arrow-bottom {
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-bottom: 5px solid currentColor;
+}
+
+.arrow-left {
+  left: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-left: 5px solid currentColor;
+}
+
+.arrow-right {
+  right: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-right: 5px solid currentColor;
+}
+
+/* Arrow color per variant */
+.variant-dark .arrow    { color: #111827; }
+.variant-light .arrow   { color: #FFFFFF; }
+.variant-primary .arrow { color: #6366F1; }

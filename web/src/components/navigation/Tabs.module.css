@@ -1,0 +1,130 @@
+.tabs {
+  width: 100%;
+}
+
+/* Line variant */
+.variant-line .list {
+  display: flex;
+  border-bottom: 2px solid #E5E7EB;
+  gap: 0;
+}
+
+.variant-line .tab {
+  position: relative;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #6B7280;
+  font-weight: 500;
+  padding: 0;
+  white-space: nowrap;
+  transition: color 0.15s;
+}
+
+.variant-line .tab::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: transparent;
+  transition: background 0.15s;
+  border-radius: 2px 2px 0 0;
+}
+
+.variant-line .tab.active {
+  color: #6366F1;
+}
+
+.variant-line .tab.active::after {
+  background: #6366F1;
+}
+
+.variant-line .tab:hover:not(:disabled) {
+  color: #4F46E5;
+}
+
+.variant-line .tab:disabled {
+  color: #9CA3AF;
+  cursor: not-allowed;
+}
+
+/* Pill variant */
+.variant-pill .list {
+  display: inline-flex;
+  background: #F3F4F6;
+  border-radius: 6px;
+  padding: 4px;
+  gap: 2px;
+}
+
+.variant-pill .tab {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #6B7280;
+  font-weight: 500;
+  border-radius: 6px;
+  transition: color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+
+.variant-pill .tab.active {
+  background: #FFFFFF;
+  color: #111827;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.variant-pill .tab:hover:not(:disabled):not(.active) {
+  color: #374151;
+}
+
+.variant-pill .tab:disabled {
+  color: #9CA3AF;
+  cursor: not-allowed;
+}
+
+/* Sizes */
+.size-sm .tab {
+  font-size: 13px;
+  padding: 6px 12px;
+}
+
+.size-md .tab {
+  font-size: 14px;
+  padding: 8px 16px;
+}
+
+.size-lg .tab {
+  font-size: 15px;
+  padding: 10px 20px;
+}
+
+/* Badge */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  margin-left: 6px;
+  background: #EEF2FF;
+  color: #6366F1;
+  border-radius: 9px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.tab.active .badge {
+  background: #6366F1;
+  color: #FFFFFF;
+}
+
+/* Focus */
+.tab:focus-visible {
+  outline: 2px solid #6366F1;
+  outline-offset: 2px;
+  border-radius: 4px;
+}

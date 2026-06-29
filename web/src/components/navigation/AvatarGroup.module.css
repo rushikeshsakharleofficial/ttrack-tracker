@@ -1,0 +1,26 @@
+.group {
+  display: flex;
+  align-items: center;
+}
+
+.item {
+  display: inline-flex;
+  position: relative;
+}
+
+.bordered {
+  box-shadow: 0 0 0 2px #FFFFFF;
+}
+
+.overflow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #E5E7EB;
+  color: #374151;
+  font-weight: 600;
+  box-shadow: 0 0 0 2px #FFFFFF;
+  flex-shrink: 0;
+  user-select: none;
+}

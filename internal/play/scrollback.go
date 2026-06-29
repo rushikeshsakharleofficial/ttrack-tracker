@@ -9,6 +9,11 @@ import (
 // scrollStep is lines scrolled per key/wheel action.
 const scrollStep = 3
 
+// maxScrollbackLines caps the line slice to prevent unbounded memory growth
+// when feeding extremely long recordings. Once reached, oldest lines are
+// discarded so the viewer tail stays bounded.
+const maxScrollbackLines = 100000
+
 // lineBuf accumulates terminal-output lines for the scrollback viewer.
 // Watches \n and \r to delimit lines, strips cursor-movement escape
 // sequences, preserves SGR colour/style sequences.
@@ -25,6 +30,9 @@ func (b *lineBuf) feed(data string) {
 		switch {
 		case c == '\n':
 			b.lines = append(b.lines, b.cur.String())
+			if len(b.lines) > maxScrollbackLines {
+				b.lines = b.lines[len(b.lines)-maxScrollbackLines:]
+			}
 			b.cur.Reset()
 			i++
 		case c == '\r':
@@ -42,10 +50,13 @@ func (b *lineBuf) feed(data string) {
 				// Cursor-up / cursor-position sequences imply a new visual
 				// row. Commit the current partial line so scrollback lines
 				// map to actual screen rows instead of concatenating.
-				if b.cur.Len() > 0 {
-					b.lines = append(b.lines, b.cur.String())
-					b.cur.Reset()
+			if b.cur.Len() > 0 {
+				b.lines = append(b.lines, b.cur.String())
+				if len(b.lines) > maxScrollbackLines {
+					b.lines = b.lines[len(b.lines)-maxScrollbackLines:]
 				}
+				b.cur.Reset()
+			}
 			}
 			if n == 0 {
 				n = 1

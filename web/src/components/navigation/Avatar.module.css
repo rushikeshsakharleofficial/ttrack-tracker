@@ -1,0 +1,77 @@
+.avatar {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  overflow: visible;
+  flex-shrink: 0;
+}
+
+.img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+
+.initials {
+  color: #FFFFFF;
+  font-weight: 600;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.silhouette {
+  width: 60%;
+  height: 60%;
+  color: #FFFFFF;
+}
+
+/* Sizes */
+.size-xs {
+  width: 32px;
+  height: 32px;
+  font-size: 11px;
+}
+
+.size-sm {
+  width: 40px;
+  height: 40px;
+  font-size: 13px;
+}
+
+.size-md {
+  width: 48px;
+  height: 48px;
+  font-size: 15px;
+}
+
+.size-lg {
+  width: 64px;
+  height: 64px;
+  font-size: 19px;
+}
+
+.size-xl {
+  width: 80px;
+  height: 80px;
+  font-size: 24px;
+}
+
+/* Status dot */
+.status {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid #FFFFFF;
+}
+
+.status-online  { background: #10B981; }
+.status-offline { background: #6B7280; }
+.status-away    { background: #F59E0B; }
+.status-busy    { background: #EF4444; }

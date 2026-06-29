@@ -1,0 +1,5 @@
+export { Tabs } from './Tabs'
+export { Breadcrumb } from './Breadcrumb'
+export { Pagination } from './Pagination'
+export { Avatar } from './Avatar'
+export { AvatarGroup } from './AvatarGroup'

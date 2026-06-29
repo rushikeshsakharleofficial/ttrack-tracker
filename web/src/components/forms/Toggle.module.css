@@ -1,0 +1,90 @@
+.wrapper {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.wrapper.disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.nativeInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* track */
+.track {
+  position: relative;
+  border-radius: 999px;
+  background-color: #D1D5DB;
+  transition: background-color 0.2s ease;
+  flex-shrink: 0;
+}
+
+.nativeInput:focus-visible ~ .track {
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.25);
+}
+
+.nativeInput:checked ~ .track {
+  background-color: #6366F1;
+}
+
+/* thumb */
+.track::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background-color: #FFFFFF;
+  border-radius: 50%;
+  transition: left 0.2s ease;
+}
+
+/* md: track 44×24, thumb 16×16 */
+.md .track {
+  width: 44px;
+  height: 24px;
+}
+
+.md .track::after {
+  width: 16px;
+  height: 16px;
+  left: 4px;
+}
+
+.md .nativeInput:checked ~ .track::after {
+  left: 24px;
+}
+
+/* sm: track 36×20, thumb 12×12 */
+.sm .track {
+  width: 36px;
+  height: 20px;
+}
+
+.sm .track::after {
+  width: 12px;
+  height: 12px;
+  left: 4px;
+}
+
+.sm .nativeInput:checked ~ .track::after {
+  left: 20px;
+}
+
+.label {
+  font-size: 14px;
+  color: #374151;
+  line-height: 1.4;
+  user-select: none;
+}

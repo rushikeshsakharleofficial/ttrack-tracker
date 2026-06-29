@@ -596,6 +596,12 @@ func centralPath(user, name string) string {
 	return filepath.Join(store.CentralDir(), user, name)
 }
 
+// maxPartialLine caps the partial-line buffer to 1 MiB. A single output
+// line longer than this (e.g. a minified JSON blob) is flushed early so the
+// buffer cannot grow without bound. systemd MemoryMax=512M makes this
+// defence-in-depth rather than the sole guard.
+const maxPartialLine = 1 << 20
+
 // lineRing keeps only the last N completed output lines plus the current
 // partial (un-terminated) line, so tailing a session uses memory bounded to
 // ~N lines regardless of the recording's size. Completed lines are stored
@@ -621,6 +627,10 @@ func (r *lineRing) add(s string) {
 		i := strings.IndexByte(s, '\n')
 		if i < 0 {
 			r.partial = append(r.partial, s...)
+			if len(r.partial) > maxPartialLine {
+				r.pushLine(string(r.partial))
+				r.partial = r.partial[:0]
+			}
 			return
 		}
 		r.partial = append(r.partial, s[:i]...)

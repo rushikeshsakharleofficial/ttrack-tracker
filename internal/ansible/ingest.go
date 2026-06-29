@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"ttrack/internal/config"
 	"ttrack/internal/store"
@@ -92,7 +91,7 @@ func ValidRunID(id string) bool {
 
 // sendToDaemon connects to ttrackd, sends "ANSIBLE <runid>\n", then streams data.
 func sendToDaemon(runID string, data []byte) error {
-	conn, err := net.DialTimeout("unix", daemonSocket(), 2*time.Second)
+	conn, err := net.DialTimeout("unix", daemonSocket(), config.Load().DialTimeout)
 	if err != nil {
 		return err
 	}

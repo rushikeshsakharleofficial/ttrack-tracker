@@ -1,0 +1,72 @@
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* sizes */
+.sm {
+  font-size: 11px;
+  padding: 1px 6px;
+}
+
+.md {
+  font-size: 12px;
+  padding: 2px 8px;
+}
+
+/* shape */
+.pill {
+  border-radius: 12px;
+}
+
+.square {
+  border-radius: 4px;
+}
+
+/* dot */
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+/* variants */
+.primary {
+  background: #EEF2FF;
+  color: #4338CA;
+}
+
+.secondary {
+  background: #F3F4F6;
+  color: #374151;
+}
+
+.success {
+  background: #ECFDF5;
+  color: #065F46;
+}
+
+.warning {
+  background: #FFFBEB;
+  color: #92400E;
+}
+
+.danger {
+  background: #FEF2F2;
+  color: #991B1B;
+}
+
+.info {
+  background: #EFF6FF;
+  color: #1E40AF;
+}
+
+.neutral {
+  background: #F3F4F6;
+  color: #374151;
+}

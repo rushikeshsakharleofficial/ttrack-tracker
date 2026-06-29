@@ -15,6 +15,8 @@ import (
 	"io"
 	"strconv"
 	"unicode/utf8"
+
+	"ttrack/internal/config"
 )
 
 // Header is the first line of a cast file.
@@ -49,7 +51,7 @@ type Writer struct {
 // NewWriter writes the header and returns a Writer for the events.
 func NewWriter(w io.Writer, h Header) (*Writer, error) {
 	h.Version = 2
-	bw := bufio.NewWriter(w)
+	bw := bufio.NewWriterSize(w, config.Load().ScrollBuffer)
 	if err := json.NewEncoder(bw).Encode(h); err != nil {
 		return nil, err
 	}

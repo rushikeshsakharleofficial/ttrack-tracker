@@ -1,0 +1,163 @@
+.wrapper {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wrapper.fullWidth {
+  display: flex;
+  width: 100%;
+}
+
+.label {
+  font-size: 12px;
+  font-weight: 500;
+  color: #374151;
+  line-height: 1.4;
+}
+
+.label .required {
+  color: #EF4444;
+  margin-left: 2px;
+}
+
+.inputContainer {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.input {
+  width: 100%;
+  font-size: 14px;
+  color: #111827;
+  background-color: #FFFFFF;
+  border: 1px solid #D1D5DB;
+  border-radius: 6px;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  padding: 10px 12px;
+  box-sizing: border-box;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.input::placeholder {
+  color: #9CA3AF;
+}
+
+.input:focus {
+  border-color: #6366F1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+}
+
+.input:disabled {
+  background-color: #F9FAFB;
+  color: #9CA3AF;
+  cursor: not-allowed;
+  border-color: #E5E7EB;
+}
+
+/* size variants */
+.sm .input {
+  height: 32px;
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+.md .input {
+  height: 40px;
+}
+
+.lg .input {
+  height: 48px;
+  padding: 13px 14px;
+  font-size: 15px;
+}
+
+/* icon padding overrides */
+.hasLeftIcon .input {
+  padding-left: 36px;
+}
+
+.hasRightIcon .input {
+  padding-right: 36px;
+}
+
+.sm.hasLeftIcon .input {
+  padding-left: 32px;
+}
+
+.sm.hasRightIcon .input {
+  padding-right: 32px;
+}
+
+.lg.hasLeftIcon .input {
+  padding-left: 42px;
+}
+
+.lg.hasRightIcon .input {
+  padding-right: 42px;
+}
+
+.leftIcon,
+.rightIcon {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #9CA3AF;
+  pointer-events: none;
+}
+
+.leftIcon {
+  left: 10px;
+}
+
+.rightIcon {
+  right: 10px;
+}
+
+.rightIconButton {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #9CA3AF;
+  line-height: 1;
+}
+
+.rightIconButton:hover {
+  color: #374151;
+}
+
+/* error state */
+.error .input {
+  border-color: #EF4444;
+}
+
+.error .input:focus {
+  border-color: #EF4444;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15);
+}
+
+.errorText {
+  font-size: 12px;
+  color: #EF4444;
+  line-height: 1.4;
+}
+
+.hintText {
+  font-size: 12px;
+  color: #9CA3AF;
+  line-height: 1.4;
+}
